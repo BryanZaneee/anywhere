@@ -749,7 +749,7 @@ function toggleBulletList() {
     updateStyles();
   }
   updateToolbar();
-  if (currentNote) currentNote.el.focus();
+  if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
 }
 
 function toggleNumberedList() {
@@ -812,7 +812,7 @@ function toggleNumberedList() {
     updateStyles();
   }
   updateToolbar();
-  if (currentNote) currentNote.el.focus();
+  if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
 }
 
 function updateToolbar() {
@@ -1030,7 +1030,7 @@ document.addEventListener('mouseup', () => {
       updateStyles();
     }
     updateToolbar();
-    if (currentNote) currentNote.el.focus();
+    if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
   };
 });
 
@@ -1050,7 +1050,7 @@ document.addEventListener('mouseup', () => {
     }
     updateStyles();
     updateToolbar();
-    if (currentNote) currentNote.el.focus();
+    if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
   };
 });
 
@@ -1093,7 +1093,7 @@ $('fontSize').onchange = () => {
     applyStyles(currentNote.el, currentNote.styles);
     updateStyles();
   }
-  if (currentNote) currentNote.el.focus();
+  if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
 };
 
 $('fontFamily').onchange = () => {
@@ -1124,7 +1124,7 @@ $('fontFamily').onchange = () => {
     applyStyles(currentNote.el, currentNote.styles);
     updateStyles();
   }
-  if (currentNote) currentNote.el.focus();
+  if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
 };
 
 // Sidebar buttons
