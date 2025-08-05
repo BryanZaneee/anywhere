@@ -371,8 +371,8 @@
   /* Selection */
   .select-box {
     position: absolute;
-    border: 1px dashed rgba(59, 130, 246, 0.5);
-    background: rgba(59, 130, 246, 0.1);
+    border: 1px dashed rgba(52, 69, 50, 0.7);
+    background: rgba(52, 69, 50, 0.1);
     pointer-events: none;
   }
   
@@ -380,7 +380,7 @@
     position: absolute;
     width: 12px;
     height: 12px;
-    background: #3b82f6;
+    background: #344532;
     border: 2px solid #fff;
     border-radius: 2px;
     cursor: move;
@@ -451,7 +451,207 @@
 
   /* Settings Modal */
   .settings-modal {
-    min-width: 350px;
+    min-width: 450px;
+    max-width: 650px;
+    padding: 0;
+  }
+  
+  .tabbed-modal {
+    display: flex;
+    flex-direction: column;
+    max-height: 80vh;
+  }
+  
+  .settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px 24px 0 24px;
+    border-bottom: 1px solid var(--bd);
+  }
+  
+  .settings-header h3 {
+    margin: 0;
+    color: #fff;
+  }
+  
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--st);
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+  
+  .modal-close:hover {
+    background: var(--bd);
+  }
+  
+  .settings-body {
+    display: flex;
+    flex: 1;
+    min-height: 400px;
+  }
+  
+  .settings-sidebar {
+    width: 60px;
+    background: var(--sh);
+    border-right: 1px solid var(--bd);
+    padding: 0;
+  }
+  
+  .settings-tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 0;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 1px solid var(--bd);
+    position: relative;
+  }
+  
+  .settings-tab:hover {
+    background: var(--bd);
+  }
+  
+  .settings-tab.active {
+    background: #344532;
+    color: #fff;
+  }
+  
+  .settings-tab svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+  }
+  
+  .settings-tab span {
+    display: none;
+  }
+  
+  .settings-content {
+    flex: 1;
+    overflow-y: auto;
+  }
+  
+  .settings-panel {
+    display: none;
+    padding: 24px;
+  }
+  
+  .settings-panel.active {
+    display: block;
+  }
+  
+  /* Platform Toggle */
+  .platform-toggle {
+    margin-bottom: 24px;
+  }
+  
+  .toggle-label {
+    color: #fff;
+    font-weight: 500;
+    margin-bottom: 12px;
+    display: block;
+  }
+  
+  .toggle-switch {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  
+  .toggle-switch input[type="radio"] {
+    display: none;
+  }
+  
+  .toggle-switch label {
+    padding: 8px 16px;
+    background: var(--bd);
+    color: var(--st);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+    border: 1px solid var(--bd);
+  }
+  
+  .toggle-switch label:hover {
+    background: var(--sh);
+  }
+  
+  .toggle-switch input[type="radio"]:checked + label {
+    background: #344532;
+    color: #fff;
+    border-color: #344532;
+  }
+  
+  /* Shortcuts Layout */
+  .shortcuts-content {
+    max-height: 350px;
+    overflow-y: auto;
+  }
+  
+  .shortcuts-section {
+    margin-bottom: 32px;
+  }
+  
+  .shortcuts-section:last-child {
+    margin-bottom: 0;
+  }
+  
+  .shortcuts-section h4 {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 16px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--bd);
+  }
+  
+  .shortcuts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .shortcut-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+  }
+  
+  .shortcut-action {
+    color: var(--st);
+    font-size: 14px;
+  }
+  
+  .shortcut-key {
+    color: #fff;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    background: var(--sh);
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--bd);
+    font-weight: 500;
+  }
+  
+  /* Modal buttons for tabbed modal */
+  .tabbed-modal .modal-buttons {
+    padding: 24px;
+    border-top: 1px solid var(--bd);
+    margin: 0;
   }
 
   .setting-group {
@@ -480,7 +680,7 @@
     appearance: none;
     width: 18px;
     height: 18px;
-    background: #3b82f6;
+    background: #344532;
     border-radius: 50%;
     cursor: pointer;
   }
@@ -488,7 +688,7 @@
   .setting-group input[type="range"]::-moz-range-thumb {
     width: 18px;
     height: 18px;
-    background: #3b82f6;
+    background: #344532;
     border-radius: 50%;
     cursor: pointer;
     border: none;

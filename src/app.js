@@ -48,6 +48,205 @@ function loadTheme() {
   themeText.textContent = isDark ? 'Dark Mode' : 'Light Mode';
 }
 
+// Keyboard shortcuts data
+const keyboardShortcuts = {
+  global: {
+    title: "Global Shortcuts",
+    shortcuts: [
+      {
+        action: "New Document",
+        mac: "⌘ + N",
+        windows: "Ctrl + N"
+      },
+      {
+        action: "Save Document",
+        mac: "⌘ + S", 
+        windows: "Ctrl + S"
+      },
+      {
+        action: "Undo",
+        mac: "⌘ + Z",
+        windows: "Ctrl + Z"
+      },
+      {
+        action: "Redo",
+        mac: "⌘ + Shift + Z",
+        windows: "Ctrl + Shift + Z"
+      },
+      {
+        action: "Select All Notes",
+        mac: "⌘ + A",
+        windows: "Ctrl + A"
+      },
+      {
+        action: "Clear Selection",
+        mac: "Escape",
+        windows: "Escape"
+      }
+    ]
+  },
+  selection: {
+    title: "Selection Shortcuts",
+    shortcuts: [
+      {
+        action: "Copy Selected Notes",
+        mac: "⌘ + C",
+        windows: "Ctrl + C"
+      },
+      {
+        action: "Paste Notes",
+        mac: "⌘ + V",
+        windows: "Ctrl + V"
+      },
+      {
+        action: "Duplicate Selected Notes",
+        mac: "⌘ + D",
+        windows: "Ctrl + D"
+      },
+      {
+        action: "Delete Selected Notes",
+        mac: "Delete / Backspace",
+        windows: "Delete / Backspace"
+      },
+      {
+        action: "Move Selected Notes",
+        mac: "Arrow Keys",
+        windows: "Arrow Keys"
+      },
+      {
+        action: "Move Selected Notes (10px)",
+        mac: "Shift + Arrow Keys",
+        windows: "Shift + Arrow Keys"
+      },
+      {
+        action: "Increase Font Size",
+        mac: "⌘ + =",
+        windows: "Ctrl + ="
+      },
+      {
+        action: "Decrease Font Size",
+        mac: "⌘ + -",
+        windows: "Ctrl + -"
+      }
+    ]
+  },
+  noteEditing: {
+    title: "Note Editing",
+    shortcuts: [
+      {
+        action: "Bold (within note)",
+        mac: "⌘ + B",
+        windows: "Ctrl + B"
+      },
+      {
+        action: "Italic (within note)",
+        mac: "⌘ + I",
+        windows: "Ctrl + I"
+      },
+      {
+        action: "Underline (within note)",
+        mac: "⌘ + U",
+        windows: "Ctrl + U"
+      },
+      {
+        action: "Align Left (within note)",
+        mac: "⌘ + L",
+        windows: "Ctrl + L"
+      },
+      {
+        action: "Align Center (within note)",
+        mac: "⌘ + E",
+        windows: "Ctrl + E"
+      },
+      {
+        action: "Align Right (within note)",
+        mac: "⌘ + R",
+        windows: "Ctrl + R"
+      }
+    ]
+  },
+  formatting: {
+    title: "Multi-Note Formatting",
+    shortcuts: [
+      {
+        action: "Bold (selected notes)",
+        mac: "⌘ + B",
+        windows: "Ctrl + B"
+      },
+      {
+        action: "Italic (selected notes)",
+        mac: "⌘ + I",
+        windows: "Ctrl + I"
+      },
+      {
+        action: "Underline (selected notes)",
+        mac: "⌘ + U",
+        windows: "Ctrl + U"
+      },
+      {
+        action: "Strikethrough",
+        mac: "⌘ + Shift + X",
+        windows: "Ctrl + Shift + X"
+      },
+      {
+        action: "Align Left (selected notes)",
+        mac: "⌘ + L",
+        windows: "Ctrl + L"
+      },
+      {
+        action: "Align Center (selected notes)",
+        mac: "⌘ + E",
+        windows: "Ctrl + E"
+      },
+      {
+        action: "Align Right (selected notes)",
+        mac: "⌘ + R",
+        windows: "Ctrl + R"
+      },
+      {
+        action: "Bullet List",
+        mac: "⌘ + Shift + 8",
+        windows: "Ctrl + Shift + 8"
+      },
+      {
+        action: "Numbered List",
+        mac: "⌘ + Shift + 7",
+        windows: "Ctrl + Shift + 7"
+      }
+    ]
+  }
+};
+
+// Generate shortcuts HTML for the specified platform
+function generateShortcutsHTML(platform) {
+  let html = '';
+  
+  Object.entries(keyboardShortcuts).forEach(([category, data]) => {
+    html += `
+      <div class="shortcuts-section">
+        <h4>${data.title}</h4>
+        <div class="shortcuts-list">
+    `;
+    
+    data.shortcuts.forEach(shortcut => {
+      const key = platform === 'mac' ? shortcut.mac : shortcut.windows;
+      html += `
+        <div class="shortcut-item">
+          <span class="shortcut-action">${shortcut.action}</span>
+          <span class="shortcut-key">${key}</span>
+        </div>
+      `;
+    });
+    
+    html += `
+        </div>
+      </div>
+    `;
+  });
+  
+  return html;
+}
+
 // Settings management
 function loadSettings() {
   const saved = localStorage.getItem('anywhereSettings');
@@ -430,26 +629,74 @@ function showDeleteModal(doc) {
 }
 
 function showSettingsModal() {
+  // Detect user's platform for default preference
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  const defaultPlatform = isMac ? 'mac' : 'windows';
+  const preferredPlatform = localStorage.getItem('preferredShortcutPlatform') || defaultPlatform;
+  
   const modal = document.createElement('div');
   modal.className = 'modal';
   modal.innerHTML = `
-    <div class="modal-content settings-modal">
-      <h3>Settings</h3>
-      
-      <div class="setting-group">
-        <label for="idleTimeInput">Toolbar auto-hide delay (seconds):</label>
-        <input type="number" id="idleTimeInput" min="1" max="99" value="${headerIdleTimeout / 1000}">
+    <div class="modal-content settings-modal tabbed-modal">
+      <div class="settings-header">
+        <h3>Settings</h3>
+        <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
       </div>
       
-      <div class="setting-group">
-        <label>
-          <input type="checkbox" id="headerToggle" ${headerCanHide ? 'checked' : ''}>
-          Allow toolbar to auto-hide
-        </label>
-      </div>
-      
-      <div class="setting-group">
-        <button class="delete-all-btn" id="deleteAllNotes">Delete All Notes</button>
+      <div class="settings-body">
+        <div class="settings-sidebar">
+          <div class="settings-tab active" data-tab="options" title="Options">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            <span>Options</span>
+          </div>
+          <div class="settings-tab" data-tab="shortcuts" title="Keyboard Shortcuts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            <span>Shortcuts</span>
+          </div>
+        </div>
+        
+        <div class="settings-content">
+          <div class="settings-panel active" id="options-panel">
+            <div class="setting-group">
+              <label for="idleTimeInput">Toolbar auto-hide delay (seconds):</label>
+              <input type="number" id="idleTimeInput" min="1" max="99" value="${headerIdleTimeout / 1000}">
+            </div>
+            
+            <div class="setting-group">
+              <label>
+                <input type="checkbox" id="headerToggle" ${headerCanHide ? 'checked' : ''}>
+                Allow toolbar to auto-hide
+              </label>
+            </div>
+            
+            <div class="setting-group">
+              <button class="delete-all-btn" id="deleteAllNotes">Delete All Notes</button>
+            </div>
+          </div>
+          
+          <div class="settings-panel" id="shortcuts-panel">
+            <div class="platform-toggle">
+              <span class="toggle-label">Show shortcuts for:</span>
+              <div class="toggle-switch">
+                <input type="radio" id="platform-mac" name="platform" value="mac" ${preferredPlatform === 'mac' ? 'checked' : ''}>
+                <label for="platform-mac">Mac</label>
+                <input type="radio" id="platform-windows" name="platform" value="windows" ${preferredPlatform === 'windows' ? 'checked' : ''}>
+                <label for="platform-windows">Windows</label>
+              </div>
+            </div>
+            
+            <div class="shortcuts-content" id="shortcuts-content">
+              ${generateShortcutsHTML(preferredPlatform)}
+            </div>
+          </div>
+        </div>
       </div>
       
       <div class="modal-buttons">
@@ -461,6 +708,38 @@ function showSettingsModal() {
   
   const idleTimeInput = modal.querySelector('#idleTimeInput');
   const headerToggle = modal.querySelector('#headerToggle');
+  
+  // Tab switching functionality
+  const tabs = modal.querySelectorAll('.settings-tab');
+  const panels = modal.querySelectorAll('.settings-panel');
+  
+  tabs.forEach(tab => {
+    tab.onclick = () => {
+      // Remove active class from all tabs and panels
+      tabs.forEach(t => t.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      
+      // Add active class to clicked tab and corresponding panel
+      tab.classList.add('active');
+      const targetPanel = modal.querySelector(`#${tab.dataset.tab}-panel`);
+      if (targetPanel) {
+        targetPanel.classList.add('active');
+      }
+    };
+  });
+  
+  // Platform toggle functionality
+  const platformRadios = modal.querySelectorAll('input[name="platform"]');
+  const shortcutsContent = modal.querySelector('#shortcuts-content');
+  
+  platformRadios.forEach(radio => {
+    radio.onchange = () => {
+      if (radio.checked) {
+        shortcutsContent.innerHTML = generateShortcutsHTML(radio.value);
+        localStorage.setItem('preferredShortcutPlatform', radio.value);
+      }
+    };
+  });
   
   // Validate number input
   idleTimeInput.oninput = () => {
