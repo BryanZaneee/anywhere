@@ -7,12 +7,12 @@
   :root {
     --bg: #fafafa;
     --txt: #333;
-    --sb: #2a2a2a;
+    --sb: #344532;
     --st: #ccc;
     --sh: rgba(255, 255, 255, 0.1);
     --nf: rgba(255, 255, 255, 0.5);
     --nb: rgba(0, 0, 0, 0.1);
-    --tb: rgba(255, 255, 255, 0.85);
+    --tb: rgba(52, 69, 50, 0.9);
     --ts: rgba(0, 0, 0, 0.1);
     --th: rgba(0, 0, 0, 0.05);
     --ta: rgba(0, 0, 0, 0.1);
@@ -24,10 +24,10 @@
   body.dark {
     --bg: #1a1a1a;
     --txt: #e0e0e0;
-    --sb: #000;
+    --sb: #2d3c2a;
     --nf: rgba(255, 255, 255, 0.1);
     --nb: rgba(255, 255, 255, 0.2);
-    --tb: rgba(30, 30, 30, 0.85);
+    --tb: rgba(45, 60, 42, 0.9);
     --ts: rgba(0, 0, 0, 0.3);
     --th: rgba(255, 255, 255, 0.1);
     --ta: rgba(255, 255, 255, 0.2);
@@ -52,25 +52,74 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 48px;
+    font-size: 60px;
     font-weight: 300;
     color: var(--lc);
     pointer-events: none;
     font-family: Georgia, serif;
     letter-spacing: 0.05em;
     transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+    text-align: center;
+  }
+
+  #logo-subtext {
+    font-size: 20px;
+    font-weight: 300;
+    color: var(--lc);
+    font-family: Georgia, serif;
+    letter-spacing: 0.05em;
+    margin-top: 12px;
+    opacity: 0.8;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
   }
   
-  #logo.tl {
-    top: 24px;
-    left: 24px;
+  #logo.slide-away {
+    top: -60px;
+    left: -200px;
     transform: none;
-    font-size: 24px;
+    font-size: 30px;
+    opacity: 0;
+  }
+
+  #logo.slide-away #logo-subtext {
+    opacity: 0;
   }
   
-  #sidebar.exp ~ #canvas #logo.tl {
-    left: 24px;
+  #logo.hidden {
+    display: none;
   }
+  
+  /* Sidebar Logo */
+  .sidebar-logo {
+    padding: 14px;
+    font-size: 18px;
+    font-weight: 300;
+    color: #fff;
+    font-family: Georgia, serif;
+    letter-spacing: 0.05em;
+    text-align: center;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .logo-full {
+    display: none;
+  }
+  
+  .logo-short {
+    display: block;
+  }
+  
+  #sidebar.exp .logo-full {
+    display: block;
+  }
+  
+  #sidebar.exp .logo-short {
+    display: none;
+  }
+  
   
   /* Notes */
   .note {
@@ -155,7 +204,7 @@
     border-radius: 4px;
     font-size: 14px;
     transition: background 0.2s;
-    color: var(--txt);
+    color: #ffffff;
   }
   
   #toolbar button:hover {
@@ -170,8 +219,8 @@
     padding: 4px 8px;
     border: 1px solid var(--bd);
     border-radius: 4px;
-    background: var(--tb);
-    color: var(--txt);
+    background: rgba(52, 69, 50, 0.95);
+    color: #ffffff;
     cursor: pointer;
     font-size: 14px;
     outline: none;
@@ -198,6 +247,7 @@
     overflow: hidden;
   }
   
+  
   #sidebar.exp {
     width: 260px;
   }
@@ -216,6 +266,7 @@
     flex-shrink: 0;
     overflow: hidden;
   }
+  
   
   .sb-btn:hover {
     background: var(--sh);
@@ -239,14 +290,21 @@
   }
   
   #searchInput {
-    width: calc(100% - 20px);
-    margin: 10px;
-    padding: 8px;
-    border: 1px solid var(--bd);
-    background: var(--ib);
-    color: #fff;
-    border-radius: 4px;
+    width: calc(100% - 28px);
+    margin: 10px 14px;
+    padding: 12px;
+    border: none;
+    background: transparent;
+    color: var(--st);
+    border-radius: 0;
+    border-bottom: 1px solid var(--sh);
     display: none;
+    font-size: 14px;
+    outline: none;
+  }
+  
+  #searchInput::placeholder {
+    color: rgba(204, 204, 204, 0.6);
   }
   
   #sidebar.exp #searchInput {
@@ -255,7 +313,7 @@
   
   #notesList {
     flex: 1;
-    overflow-y: auto;
+    
     display: none;
     padding: 10px;
   }
@@ -412,11 +470,13 @@
   .modal-content h3 {
     color: #fff;
     margin-bottom: 16px;
+    text-align: left;
   }
   
   .modal-content p {
     color: var(--st);
     margin-bottom: 20px;
+    text-align: left;
   }
   
   .modal-buttons {
@@ -435,13 +495,13 @@
   }
   
   .modal-buttons .cancel {
-    background: transparent;
-    border: 1px solid var(--bd);
-    color: var(--st);
+    background: #ffffff;
+    border: 1px solid #cccccc;
+    color: #333333;
   }
   
   .modal-buttons .confirm {
-    background: #34453280;
+    background: #2a3628;
     color: #fff;
   }
   
@@ -451,44 +511,88 @@
 
   /* Settings Modal */
   .settings-modal {
-    min-width: 450px;
-    max-width: 650px;
+    width: 680px;
+    height: 600px;
+    min-width: 680px;
+    max-width: 680px;
+    min-height: 600px;
+    max-height: 600px;
     padding: 0;
+    background: #344532;
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
   }
   
   .tabbed-modal {
     display: flex;
-    flex-direction: column;
-    max-height: 80vh;
+    flex-direction: row;
+    height: 600px;
+    min-height: 600px;
+    max-height: 600px;
   }
   
-  .settings-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 24px 24px 0 24px;
-    border-bottom: 1px solid var(--bd);
+  .settings-modal .settings-header {
+    padding: 32px 0 24px 0;
+    margin-bottom: 0;
+    text-align: left !important;
+    display: block;
+    width: 100%;
   }
   
-  .settings-header h3 {
-    margin: 0;
+  .settings-modal .settings-header h3 {
+    margin: 0 0 8px 0;
     color: #fff;
+    font-size: 18px;
+    font-weight: 500;
+    text-align: left !important;
+    display: block;
+    width: 100%;
+  }
+  
+  .settings-modal .settings-header .tab-description {
+    margin: 0 0 24px 0;
+    color: var(--st);
+    font-size: 14px;
+    font-weight: 400;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    text-align: left !important;
+    display: block;
+    width: 100%;
+  }
+  
+  /* Additional specific selectors for the settings panels */
+  .settings-modal .settings-panel h3 {
+    text-align: left !important;
+  }
+  
+  .settings-modal .settings-panel p {
+    text-align: left !important;
+  }
+  
+  .settings-modal .settings-panel .tab-description {
+    text-align: left !important;
   }
   
   .modal-close {
+    position: absolute;
+    top: 18px;
+    left: 18px;
     background: none;
     border: none;
     color: var(--st);
     font-size: 24px;
     cursor: pointer;
     padding: 0;
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 4px;
     transition: background 0.2s;
+    z-index: 10;
   }
   
   .modal-close:hover {
@@ -497,30 +601,35 @@
   
   .settings-body {
     display: flex;
-    flex: 1;
-    min-height: 400px;
+    height: 600px;
+    min-height: 600px;
+    max-height: 600px;
   }
   
   .settings-sidebar {
     width: 60px;
     background: var(--sh);
-    border-right: 1px solid var(--bd);
-    padding: 0;
+    padding: 60px 0 0 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    flex-shrink: 0;
+    height: 600px;
   }
   
   .settings-tab {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px 0;
+    padding: 18px 0;
     cursor: pointer;
     transition: all 0.2s;
-    border-bottom: 1px solid var(--bd);
     position: relative;
+    margin-bottom: 4px;
   }
   
   .settings-tab:hover {
-    background: var(--bd);
+    background: rgba(255, 255, 255, 0.1);
   }
   
   .settings-tab.active {
@@ -529,8 +638,8 @@
   }
   
   .settings-tab svg {
-    width: 20px;
-    height: 20px;
+    width: 24px;
+    height: 24px;
     stroke: currentColor;
   }
   
@@ -539,13 +648,33 @@
   }
   
   .settings-content {
-    flex: 1;
+    flex: 1 1 auto;
     overflow-y: auto;
+    min-height: 0;
+    width: 620px;
+  }
+  
+  /* Custom Scrollbar for Settings Content */
+  .settings-content::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  .settings-content::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .settings-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+  
+  .settings-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
   }
   
   .settings-panel {
     display: none;
-    padding: 24px;
+    padding: 0 32px 32px 32px;
   }
   
   .settings-panel.active {
@@ -597,8 +726,7 @@
   
   /* Shortcuts Layout */
   .shortcuts-content {
-    max-height: 350px;
-    overflow-y: auto;
+    /* No custom height or overflow - let parent handle scrolling */
   }
   
   .shortcuts-section {
@@ -615,7 +743,7 @@
     font-weight: 600;
     margin: 0 0 16px 0;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--bd);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   }
   
   .shortcuts-list {
@@ -643,26 +771,25 @@
     background: var(--sh);
     padding: 4px 8px;
     border-radius: 4px;
-    border: 1px solid var(--bd);
+    border: 1px solid rgba(255, 255, 255, 0.3);
     font-weight: 500;
   }
   
-  /* Modal buttons for tabbed modal */
-  .tabbed-modal .modal-buttons {
-    padding: 24px;
-    border-top: 1px solid var(--bd);
-    margin: 0;
-  }
 
   .setting-group {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
+  }
+
+  .setting-group:last-child {
+    margin-bottom: 0;
   }
 
   .setting-group label {
     display: block;
     color: #fff;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
     font-weight: 500;
+    font-size: 14px;
   }
 
   .setting-group input[type="range"] {
@@ -701,14 +828,20 @@
 
   .setting-group input[type="number"] {
     width: 80px;
-    padding: 8px 12px;
+    padding: 10px 12px;
     border: 1px solid var(--bd);
-    border-radius: 4px;
-    background: var(--ib);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
     color: #fff;
     font-size: 14px;
     outline: none;
     -moz-appearance: textfield;
+    transition: border-color 0.2s, background-color 0.2s;
+  }
+  
+  .setting-group input[type="number"]:focus {
+    border-color: #344532;
+    background: rgba(255, 255, 255, 0.15);
   }
 
   .setting-group input[type="number"]::-webkit-outer-spin-button,
@@ -720,7 +853,7 @@
   .delete-all-btn {
     width: 100%;
     padding: 12px;
-    background: #63001F;
+    background: #2a3628;
     color: white;
     border: none;
     border-radius: 6px;
@@ -731,7 +864,7 @@
   }
 
   .delete-all-btn:hover {
-    background: #4a0017;
+    background: #1f2a1d;
   }
 
   .modal-buttons .delete-confirm {

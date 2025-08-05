@@ -413,7 +413,7 @@ function createNewDocument() {
 
 function clearCanvas() {
   canvas.querySelectorAll('.note').forEach(n => n.remove());
-  logo.classList.remove('tl');
+  logo.classList.remove('slide-away', 'hidden');
   hasTyped = false;
   selectedNotes.clear();
 }
@@ -425,7 +425,8 @@ function loadDocument(id) {
   
   currentDocId = id;
   if (doc.notes.length) {
-    logo.classList.add('tl');
+    logo.classList.add('slide-away');
+    setTimeout(() => logo.classList.add('hidden'), 500);
     hasTyped = true;
   }
   
@@ -707,10 +708,7 @@ function showSettingsModal() {
   modal.className = 'modal';
   modal.innerHTML = `
     <div class="modal-content settings-modal tabbed-modal">
-      <div class="settings-header">
-        <h3>Settings</h3>
-        <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
-      </div>
+      <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
       
       <div class="settings-body">
         <div class="settings-sidebar">
@@ -733,6 +731,10 @@ function showSettingsModal() {
         
         <div class="settings-content">
           <div class="settings-panel active" id="options-panel">
+            <div class="settings-header">
+              <h3>General</h3>
+              <p class="tab-description">Application settings and preferences</p>
+            </div>
             <div class="setting-group">
               <label for="idleTimeInput">Toolbar auto-hide delay (seconds):</label>
               <input type="number" id="idleTimeInput" min="1" max="99" value="${headerIdleTimeout / 1000}">
@@ -751,6 +753,10 @@ function showSettingsModal() {
           </div>
           
           <div class="settings-panel" id="shortcuts-panel">
+            <div class="settings-header">
+              <h3>Shortcuts</h3>
+              <p class="tab-description">Keyboard shortcuts and hotkeys</p>
+            </div>
             <div class="platform-toggle">
               <span class="toggle-label">Show shortcuts for:</span>
               <div class="toggle-switch">
@@ -766,11 +772,6 @@ function showSettingsModal() {
             </div>
           </div>
         </div>
-      </div>
-      
-      <div class="modal-buttons">
-        <button class="cancel">Cancel</button>
-        <button class="confirm">Save</button>
       </div>
     </div>
   `;
@@ -810,20 +811,8 @@ function showSettingsModal() {
     };
   });
   
-  // Validate number input
-  idleTimeInput.oninput = () => {
-    let value = parseInt(idleTimeInput.value);
-    if (isNaN(value) || value < 1) {
-      idleTimeInput.value = 1;
-    } else if (value > 99) {
-      idleTimeInput.value = 99;
-    }
-  };
-  
-  modal.querySelector('.cancel').onclick = () => modal.remove();
-  
-  modal.querySelector('.confirm').onclick = () => {
-    // Save settings
+  // Auto-save functionality
+  function autoSaveSettings() {
     headerIdleTimeout = parseInt(idleTimeInput.value) * 1000;
     headerCanHide = headerToggle.checked;
     saveSettings();
@@ -835,12 +824,22 @@ function showSettingsModal() {
       if (headerIdleTimer) {
         clearTimeout(headerIdleTimer);
       }
-      // When auto-hide is disabled, ensure toolbar stays visible if it should be shown
-      // (The CSS class system handles the visibility automatically)
     }
-    
-    modal.remove();
+  }
+  
+  // Validate number input and auto-save
+  idleTimeInput.oninput = () => {
+    let value = parseInt(idleTimeInput.value);
+    if (isNaN(value) || value < 1) {
+      idleTimeInput.value = 1;
+    } else if (value > 99) {
+      idleTimeInput.value = 99;
+    }
+    autoSaveSettings();
   };
+  
+  // Auto-save when checkbox changes
+  headerToggle.onchange = autoSaveSettings;
   
   modal.querySelector('#deleteAllNotes').onclick = () => {
     modal.remove();
@@ -930,7 +929,8 @@ function setupNote(note, noteObj) {
   note.addEventListener('input', () => {
     if (!hasTyped && note.textContent?.length) {
       hasTyped = true;
-      logo.classList.add('tl');
+      logo.classList.add('slide-away');
+      setTimeout(() => logo.classList.add('hidden'), 500);
     }
     saveCurrentDocument();
   });
