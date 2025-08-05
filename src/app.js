@@ -708,8 +708,8 @@ function showSettingsModal() {
   modal.innerHTML = `
     <div class="modal-content settings-modal tabbed-modal">
       <div class="settings-header">
-        <h3>Settings</h3>
         <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
+        <h3>Options</h3>
       </div>
       
       <div class="settings-body">
@@ -767,20 +767,16 @@ function showSettingsModal() {
           </div>
         </div>
       </div>
-      
-      <div class="modal-buttons">
-        <button class="cancel">Cancel</button>
-        <button class="confirm">Save</button>
-      </div>
     </div>
   `;
   
   const idleTimeInput = modal.querySelector('#idleTimeInput');
   const headerToggle = modal.querySelector('#headerToggle');
   
-  // Tab switching functionality
+  // Tab switching functionality with dynamic header
   const tabs = modal.querySelectorAll('.settings-tab');
   const panels = modal.querySelectorAll('.settings-panel');
+  const headerTitle = modal.querySelector('.settings-header h3');
   
   tabs.forEach(tab => {
     tab.onclick = () => {
@@ -793,6 +789,13 @@ function showSettingsModal() {
       const targetPanel = modal.querySelector(`#${tab.dataset.tab}-panel`);
       if (targetPanel) {
         targetPanel.classList.add('active');
+      }
+      
+      // Update header title based on active tab
+      if (tab.dataset.tab === 'options') {
+        headerTitle.textContent = 'Options';
+      } else if (tab.dataset.tab === 'shortcuts') {
+        headerTitle.textContent = 'Keyboard Shortcuts';
       }
     };
   });
@@ -810,20 +813,8 @@ function showSettingsModal() {
     };
   });
   
-  // Validate number input
-  idleTimeInput.oninput = () => {
-    let value = parseInt(idleTimeInput.value);
-    if (isNaN(value) || value < 1) {
-      idleTimeInput.value = 1;
-    } else if (value > 99) {
-      idleTimeInput.value = 99;
-    }
-  };
-  
-  modal.querySelector('.cancel').onclick = () => modal.remove();
-  
-  modal.querySelector('.confirm').onclick = () => {
-    // Save settings
+  // Auto-save functionality
+  function autoSaveSettings() {
     headerIdleTimeout = parseInt(idleTimeInput.value) * 1000;
     headerCanHide = headerToggle.checked;
     saveSettings();
@@ -835,12 +826,22 @@ function showSettingsModal() {
       if (headerIdleTimer) {
         clearTimeout(headerIdleTimer);
       }
-      // When auto-hide is disabled, ensure toolbar stays visible if it should be shown
-      // (The CSS class system handles the visibility automatically)
     }
-    
-    modal.remove();
+  }
+  
+  // Validate number input and auto-save
+  idleTimeInput.oninput = () => {
+    let value = parseInt(idleTimeInput.value);
+    if (isNaN(value) || value < 1) {
+      idleTimeInput.value = 1;
+    } else if (value > 99) {
+      idleTimeInput.value = 99;
+    }
+    autoSaveSettings();
   };
+  
+  // Auto-save when checkbox changes
+  headerToggle.onchange = autoSaveSettings;
   
   modal.querySelector('#deleteAllNotes').onclick = () => {
     modal.remove();
