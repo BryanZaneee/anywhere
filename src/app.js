@@ -17,9 +17,65 @@ let headerIdleTimer = null;
 let headerIdleTimeout = 10000; // 10 seconds default
 let headerCanHide = true;
 let isToolbarHovered = false;
-let headerTimerRetryCount = 0;
-const MAX_TIMER_RETRIES = 5;
 let shouldShowToolbarOnHover = false;
+
+// Utility functions
+function focusCurrentNoteIfSingle() {
+  if (currentNote && selectedNotes.size <= 1) {
+    currentNote.el.focus();
+  }
+}
+
+function generateTitleFromText(text) {
+  if (!text || typeof text !== 'string') {
+    return 'Untitled';
+  }
+  
+  // Remove HTML tags and clean up text
+  const cleanText = text
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/\s+/g, ' ')    // Normalize whitespace
+    .trim();
+  
+  if (!cleanText) {
+    return 'Untitled';
+  }
+  
+  // Extract first few words, limit to 30 characters
+  const words = cleanText.split(' ').filter(word => word.length > 0);
+  let title = '';
+  
+  for (let i = 0; i < Math.min(5, words.length); i++) {
+    const nextWord = words[i];
+    if (title.length + nextWord.length + (i > 0 ? 1 : 0) <= 30) {
+      title += (i > 0 ? ' ' : '') + nextWord;
+    } else {
+      break;
+    }
+  }
+  
+  return title || 'Untitled';
+}
+
+function updateUI() {
+  updateStyles();
+  updateToolbar();
+}
+
+function applyStylesAndUpdate(element, styles) {
+  applyStyles(element, styles);
+  updateStyles();
+}
+
+function positionCursorInElement(element) {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 
 // Undo/Redo system
 let documentHistory = [];
@@ -276,9 +332,6 @@ function showToolbar() {
 function resetHeaderTimer() {
   if (!headerCanHide) return;
   
-  // Reset retry counter on new timer start
-  headerTimerRetryCount = 0;
-  
   // Clear existing timer
   if (headerIdleTimer) {
     clearTimeout(headerIdleTimer);
@@ -289,13 +342,7 @@ function resetHeaderTimer() {
     if (headerCanHide && toolbar.classList.contains('show') && !isToolbarHovered) {
       toolbar.classList.remove('show');
       shouldShowToolbarOnHover = true; // Keep hover zone active after auto-hide
-      headerTimerRetryCount = 0; // Reset counter on successful hide
-    } else if (isToolbarHovered && headerTimerRetryCount < MAX_TIMER_RETRIES) {
-      // If toolbar is hovered when timer expires, restart timer (with retry limit)
-      headerTimerRetryCount++;
-      resetHeaderTimer();
     }
-    // If max retries reached, stop trying to avoid infinite recursion
   }, headerIdleTimeout);
 }
 
@@ -334,6 +381,14 @@ function loadDocuments() {
   const saved = localStorage.getItem('anywhereDocuments');
   if (saved) documents = JSON.parse(saved);
   
+  // Migrate existing documents to include hasCustomTitle flag
+  Object.values(documents).forEach(doc => {
+    if (doc.hasCustomTitle === undefined) {
+      // If title starts with "Note #", it was auto-generated, otherwise it's custom
+      doc.hasCustomTitle = !doc.title.startsWith('Note #');
+    }
+  });
+  
   if (!Object.keys(documents).length) {
     createNewDocument();
   } else {
@@ -349,8 +404,7 @@ function saveDocuments() {
 
 function createNewDocument() {
   const id = Date.now() + '';
-  const noteCount = Object.keys(documents).length + 1;
-  documents[id] = { id, title: `Note #${noteCount}`, notes: [], pinned: false };
+  documents[id] = { id, title: 'Untitled', notes: [], pinned: false, hasCustomTitle: false };
   currentDocId = id;
   clearCanvas();
   saveDocuments();
@@ -421,6 +475,20 @@ function saveCurrentDocument() {
   });
   
   documents[currentDocId].notes = notes;
+  
+  // Auto-generate title from first note if document hasn't been manually titled
+  const currentDoc = documents[currentDocId];
+  if (!currentDoc.hasCustomTitle && notes.length > 0) {
+    const firstNoteText = notes[0].text;
+    if (firstNoteText && firstNoteText.trim()) {
+      const newTitle = generateTitleFromText(firstNoteText);
+      if (newTitle !== 'Untitled') {
+        currentDoc.title = newTitle;
+        updateNotesList(); // Update the sidebar display immediately
+      }
+    }
+  }
+  
   saveDocuments();
 }
 
@@ -559,6 +627,7 @@ function createNoteItem(doc) {
     input.onblur = () => {
       if (input.value.trim()) {
         doc.title = input.value.trim();
+        doc.hasCustomTitle = true; // Mark as manually titled
         saveDocuments();
       }
       updateNotesList();
@@ -1037,12 +1106,7 @@ function toggleBulletList() {
           const li = note.querySelector('li');
           if (li) {
             li.focus();
-            const range = document.createRange();
-            range.selectNodeContents(li);
-            range.collapse(false);
-            const selection = window.getSelection();
-            selection.removeAllRanges();
-            selection.addRange(range);
+            positionCursorInElement(li);
           }
         } else {
           applyStyles(note, note.__noteData.styles);
@@ -1063,12 +1127,7 @@ function toggleBulletList() {
       const li = currentNote.el.querySelector('li');
       if (li) {
         li.focus();
-        const range = document.createRange();
-        range.selectNodeContents(li);
-        range.collapse(false);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
+        positionCursorInElement(li);
       }
     } else {
       applyStyles(currentNote.el, currentNote.styles);
@@ -1076,7 +1135,7 @@ function toggleBulletList() {
     updateStyles();
   }
   updateToolbar();
-  if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
+  focusCurrentNoteIfSingle();
 }
 
 function toggleNumberedList() {
@@ -1100,12 +1159,7 @@ function toggleNumberedList() {
           const li = note.querySelector('li');
           if (li) {
             li.focus();
-            const range = document.createRange();
-            range.selectNodeContents(li);
-            range.collapse(false);
-            const selection = window.getSelection();
-            selection.removeAllRanges();
-            selection.addRange(range);
+            positionCursorInElement(li);
           }
         } else {
           applyStyles(note, note.__noteData.styles);
@@ -1126,12 +1180,7 @@ function toggleNumberedList() {
       const li = currentNote.el.querySelector('li');
       if (li) {
         li.focus();
-        const range = document.createRange();
-        range.selectNodeContents(li);
-        range.collapse(false);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
+        positionCursorInElement(li);
       }
     } else {
       applyStyles(currentNote.el, currentNote.styles);
@@ -1139,7 +1188,7 @@ function toggleNumberedList() {
     updateStyles();
   }
   updateToolbar();
-  if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
+  focusCurrentNoteIfSingle();
 }
 
 function updateToolbar() {
@@ -1354,11 +1403,10 @@ document.addEventListener('mouseup', () => {
     } else if (currentNote) {
       // Single note, no selection
       currentNote.styles[id] = !currentNote.styles[id];
-      applyStyles(currentNote.el, currentNote.styles);
-      updateStyles();
+      applyStylesAndUpdate(currentNote.el, currentNote.styles);
     }
     updateToolbar();
-    if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
+    focusCurrentNoteIfSingle();
   };
 });
 
@@ -1378,7 +1426,7 @@ document.addEventListener('mouseup', () => {
     }
     updateStyles();
     updateToolbar();
-    if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
+    focusCurrentNoteIfSingle();
   };
 });
 
@@ -1418,10 +1466,9 @@ $('fontSize').onchange = () => {
     updateStyles();
   } else if (currentNote) {
     currentNote.styles.fontSize = size;
-    applyStyles(currentNote.el, currentNote.styles);
-    updateStyles();
+    applyStylesAndUpdate(currentNote.el, currentNote.styles);
   }
-  if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
+  focusCurrentNoteIfSingle();
 };
 
 $('fontFamily').onchange = () => {
@@ -1449,10 +1496,9 @@ $('fontFamily').onchange = () => {
     updateStyles();
   } else if (currentNote) {
     currentNote.styles.fontFamily = font;
-    applyStyles(currentNote.el, currentNote.styles);
-    updateStyles();
+    applyStylesAndUpdate(currentNote.el, currentNote.styles);
   }
-  if (currentNote && selectedNotes.size <= 1) currentNote.el.focus();
+  focusCurrentNoteIfSingle();
 };
 
 // Sidebar buttons
