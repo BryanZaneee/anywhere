@@ -52,12 +52,24 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 48px;
+    font-size: 60px;
     font-weight: 300;
     color: var(--lc);
     pointer-events: none;
     font-family: Georgia, serif;
     letter-spacing: 0.05em;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+    text-align: center;
+  }
+
+  #logo-subtext {
+    font-size: 20px;
+    font-weight: 300;
+    color: var(--lc);
+    font-family: Georgia, serif;
+    letter-spacing: 0.05em;
+    margin-top: 12px;
+    opacity: 0.8;
     transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
   }
   
@@ -65,7 +77,11 @@
     top: -60px;
     left: -200px;
     transform: none;
-    font-size: 24px;
+    font-size: 30px;
+    opacity: 0;
+  }
+
+  #logo.slide-away #logo-subtext {
     opacity: 0;
   }
   
@@ -454,11 +470,13 @@
   .modal-content h3 {
     color: #fff;
     margin-bottom: 16px;
+    text-align: left;
   }
   
   .modal-content p {
     color: var(--st);
     margin-bottom: 20px;
+    text-align: left;
   }
   
   .modal-buttons {
@@ -514,28 +532,47 @@
     max-height: 600px;
   }
   
-  .settings-header {
-    position: absolute;
-    top: 24px;
-    left: 80px;
-    z-index: 10;
-    width: 540px;
+  .settings-modal .settings-header {
+    padding: 32px 0 24px 0;
+    margin-bottom: 0;
+    text-align: left !important;
+    display: block;
+    width: 100%;
   }
   
-  .settings-header h3 {
+  .settings-modal .settings-header h3 {
     margin: 0 0 8px 0;
     color: #fff;
     font-size: 18px;
     font-weight: 500;
+    text-align: left !important;
+    display: block;
+    width: 100%;
   }
   
-  .settings-header .tab-description {
-    margin: 0;
+  .settings-modal .settings-header .tab-description {
+    margin: 0 0 24px 0;
     color: var(--st);
     font-size: 14px;
     font-weight: 400;
-    padding-bottom: 8px;
+    padding-bottom: 16px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    text-align: left !important;
+    display: block;
+    width: 100%;
+  }
+  
+  /* Additional specific selectors for the settings panels */
+  .settings-modal .settings-panel h3 {
+    text-align: left !important;
+  }
+  
+  .settings-modal .settings-panel p {
+    text-align: left !important;
+  }
+  
+  .settings-modal .settings-panel .tab-description {
+    text-align: left !important;
   }
   
   .modal-close {
@@ -637,7 +674,7 @@
   
   .settings-panel {
     display: none;
-    padding: 80px 32px 32px 32px;
+    padding: 0 32px 32px 32px;
   }
   
   .settings-panel.active {

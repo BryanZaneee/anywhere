@@ -709,10 +709,6 @@ function showSettingsModal() {
   modal.innerHTML = `
     <div class="modal-content settings-modal tabbed-modal">
       <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
-      <div class="settings-header">
-        <h3>General</h3>
-        <p class="tab-description">Application settings and preferences</p>
-      </div>
       
       <div class="settings-body">
         <div class="settings-sidebar">
@@ -735,6 +731,10 @@ function showSettingsModal() {
         
         <div class="settings-content">
           <div class="settings-panel active" id="options-panel">
+            <div class="settings-header">
+              <h3>General</h3>
+              <p class="tab-description">Application settings and preferences</p>
+            </div>
             <div class="setting-group">
               <label for="idleTimeInput">Toolbar auto-hide delay (seconds):</label>
               <input type="number" id="idleTimeInput" min="1" max="99" value="${headerIdleTimeout / 1000}">
@@ -753,6 +753,10 @@ function showSettingsModal() {
           </div>
           
           <div class="settings-panel" id="shortcuts-panel">
+            <div class="settings-header">
+              <h3>Shortcuts</h3>
+              <p class="tab-description">Keyboard shortcuts and hotkeys</p>
+            </div>
             <div class="platform-toggle">
               <span class="toggle-label">Show shortcuts for:</span>
               <div class="toggle-switch">
@@ -775,11 +779,9 @@ function showSettingsModal() {
   const idleTimeInput = modal.querySelector('#idleTimeInput');
   const headerToggle = modal.querySelector('#headerToggle');
   
-  // Tab switching functionality with dynamic header
+  // Tab switching functionality
   const tabs = modal.querySelectorAll('.settings-tab');
   const panels = modal.querySelectorAll('.settings-panel');
-  const headerTitle = modal.querySelector('.settings-header h3');
-  const headerDescription = modal.querySelector('.settings-header .tab-description');
   
   tabs.forEach(tab => {
     tab.onclick = () => {
@@ -792,15 +794,6 @@ function showSettingsModal() {
       const targetPanel = modal.querySelector(`#${tab.dataset.tab}-panel`);
       if (targetPanel) {
         targetPanel.classList.add('active');
-      }
-      
-      // Update header title and description based on active tab
-      if (tab.dataset.tab === 'options') {
-        headerTitle.textContent = 'General';
-        headerDescription.textContent = 'Application settings and preferences';
-      } else if (tab.dataset.tab === 'shortcuts') {
-        headerTitle.textContent = 'Shortcuts';
-        headerDescription.textContent = 'Keyboard shortcuts and hotkeys';
       }
     };
   });
