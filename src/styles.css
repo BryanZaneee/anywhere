@@ -1,0 +1,323 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #fafafa;
+  --txt: #333;
+  --sb: #2a2a2a;
+  --st: #ccc;
+  --sh: rgba(255, 255, 255, 0.1);
+  --nf: rgba(255, 255, 255, 0.5);
+  --nb: rgba(0, 0, 0, 0.1);
+  --tb: rgba(255, 255, 255, 0.85);
+  --ts: rgba(0, 0, 0, 0.1);
+  --th: rgba(0, 0, 0, 0.05);
+  --ta: rgba(0, 0, 0, 0.1);
+  --ib: #1a1a1a;
+  --bd: #444;
+  --lc: #ccc;
+}
+
+body.dark {
+  --bg: #1a1a1a;
+  --txt: #e0e0e0;
+  --sb: #000;
+  --st: #ccc;
+  --sh: rgba(255, 255, 255, 0.1);
+  --nf: rgba(255, 255, 255, 0.1);
+  --nb: rgba(255, 255, 255, 0.2);
+  --tb: rgba(30, 30, 30, 0.85);
+  --ts: rgba(0, 0, 0, 0.3);
+  --th: rgba(255, 255, 255, 0.1);
+  --ta: rgba(255, 255, 255, 0.2);
+  --ib: #000;
+  --bd: #555;
+  --lc: #666;
+}
+
+body {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--txt);
+  cursor: crosshair;
+  transition: background 0.3s, color 0.3s;
+}
+
+#logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 48px;
+  font-weight: 300;
+  color: var(--lc);
+  pointer-events: none;
+  font-family: Georgia, serif;
+  letter-spacing: 0.05em;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#logo.tl {
+  top: 24px;
+  left: 24px;
+  transform: none;
+  font-size: 24px;
+}
+
+#sidebar.exp ~ #canvas #logo.tl {
+  left: 24px;
+}
+
+.note {
+  position: absolute;
+  outline: none;
+  border: none;
+  background: transparent;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 2px;
+  cursor: text;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--txt);
+}
+
+.note:focus {
+  background: var(--nf);
+  box-shadow: 0 0 0 1px var(--nb);
+}
+
+#toolbar {
+  position: fixed;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--tb);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 8px;
+  box-shadow: 0 2px 20px var(--ts);
+  padding: 8px 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  transition: top 0.3s ease;
+  z-index: 1000;
+  cursor: move;
+}
+
+#toolbar.show {
+  top: 20px;
+}
+
+#toolbar button {
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: background 0.2s;
+  color: var(--txt);
+}
+
+#toolbar button:hover {
+  background: var(--th);
+}
+
+#toolbar button.active {
+  background: var(--ta);
+}
+
+#toolbar select {
+  padding: 4px 8px;
+  border: 1px solid var(--bd);
+  border-radius: 4px;
+  background: var(--tb);
+  color: var(--txt);
+  cursor: pointer;
+  font-size: 14px;
+  outline: none;
+}
+
+.sep {
+  width: 1px;
+  height: 20px;
+  background: var(--bd);
+}
+
+/* Sidebar styles */
+#sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100vh;
+  width: 48px;
+  background: var(--sb);
+  transition: width 0.3s ease;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#sidebar.exp {
+  width: 260px;
+}
+
+.sb-btn {
+  width: 100%;
+  height: 48px;
+  background: none;
+  border: none;
+  color: var(--st);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.sb-btn:hover {
+  background: var(--sh);
+}
+
+.sb-btn svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.sb-btn span {
+  margin-left: 20px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+#sidebar.exp .sb-btn span {
+  opacity: 1;
+}
+
+#searchInput {
+  width: calc(100% - 20px);
+  margin: 10px;
+  padding: 8px;
+  border: 1px solid var(--bd);
+  background: var(--ib);
+  color: #fff;
+  border-radius: 4px;
+  display: none;
+}
+
+#sidebar.exp #searchInput {
+  display: block;
+}
+
+#notesList {
+  flex: 1;
+  overflow-y: auto;
+  display: none;
+  padding: 10px;
+}
+
+#sidebar.exp #notesList {
+  display: block;
+}
+
+.note-item {
+  padding: 10px;
+  margin-bottom: 5px;
+  background: var(--sh);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--st);
+  transition: background 0.2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+}
+
+.note-item:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.note-item:hover .note-actions {
+  opacity: 1;
+}
+
+.note-item.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.note-actions {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.note-actions button {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--st);
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+.note-actions button:hover {
+  background: var(--sh);
+}
+
+.note-actions svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pinned-section {
+  border-bottom: 1px solid var(--sh);
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+}
+
+.pinned-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--st);
+  margin-bottom: 8px;
+  opacity: 0.7;
+}
+
+#canvas {
+  position: absolute;
+  top: 0;
+  left: 48px;
+  right: 0;
+  bottom: 0;
+  transition: left 0.3s ease;
+}
+
+#sidebar.exp ~ #canvas {
+  left: 260px;
+}
+
+.sb-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--sh);
+} 
