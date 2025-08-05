@@ -61,15 +61,16 @@
     transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
   }
   
-  #logo.tl {
-    top: 24px;
-    left: 24px;
+  #logo.slide-away {
+    top: -60px;
+    left: -200px;
     transform: none;
     font-size: 24px;
+    opacity: 0;
   }
   
-  #sidebar.exp ~ #canvas #logo.tl {
-    left: 24px;
+  #logo.hidden {
+    display: none;
   }
   
   /* Sidebar Logo */
@@ -296,7 +297,7 @@
   
   #notesList {
     flex: 1;
-    overflow-y: auto;
+    
     display: none;
     padding: 10px;
   }
@@ -492,48 +493,69 @@
 
   /* Settings Modal */
   .settings-modal {
-    width: 800px;
-    max-width: 800px;
-    min-width: 800px;
+    width: 680px;
     height: 600px;
-    max-height: 600px;
+    min-width: 680px;
+    max-width: 680px;
     min-height: 600px;
+    max-height: 600px;
     padding: 0;
     background: #344532;
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
   }
   
   .tabbed-modal {
     display: flex;
-    flex-direction: column;
-    max-height: 80vh;
+    flex-direction: row;
+    height: 600px;
+    min-height: 600px;
+    max-height: 600px;
   }
   
   .settings-header {
-    display: flex;
-    align-items: center;
-    padding: 24px 24px 0 24px;
-    gap: 16px;
+    position: absolute;
+    top: 24px;
+    left: 80px;
+    z-index: 10;
+    width: 540px;
   }
   
   .settings-header h3 {
-    margin: 0;
+    margin: 0 0 8px 0;
     color: #fff;
+    font-size: 18px;
+    font-weight: 500;
+  }
+  
+  .settings-header .tab-description {
+    margin: 0;
+    color: var(--st);
+    font-size: 14px;
+    font-weight: 400;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   }
   
   .modal-close {
+    position: absolute;
+    top: 18px;
+    left: 18px;
     background: none;
     border: none;
     color: var(--st);
     font-size: 24px;
     cursor: pointer;
     padding: 0;
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 4px;
     transition: background 0.2s;
+    z-index: 10;
   }
   
   .modal-close:hover {
@@ -542,32 +564,35 @@
   
   .settings-body {
     display: flex;
-    flex: 1;
-    height: 520px;
-    min-height: 520px;
-    max-height: 520px;
+    height: 600px;
+    min-height: 600px;
+    max-height: 600px;
   }
   
   .settings-sidebar {
     width: 60px;
     background: var(--sh);
-    padding: 0;
+    padding: 60px 0 0 0;
     display: flex;
     flex-direction: column;
+    position: relative;
+    flex-shrink: 0;
+    height: 600px;
   }
   
   .settings-tab {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px 0;
+    padding: 18px 0;
     cursor: pointer;
     transition: all 0.2s;
     position: relative;
+    margin-bottom: 4px;
   }
   
   .settings-tab:hover {
-    background: var(--bd);
+    background: rgba(255, 255, 255, 0.1);
   }
   
   .settings-tab.active {
@@ -576,8 +601,8 @@
   }
   
   .settings-tab svg {
-    width: 20px;
-    height: 20px;
+    width: 24px;
+    height: 24px;
     stroke: currentColor;
   }
   
@@ -586,13 +611,33 @@
   }
   
   .settings-content {
-    flex: 1;
-    overflow-y: visible;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+    width: 620px;
+  }
+  
+  /* Custom Scrollbar for Settings Content */
+  .settings-content::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  .settings-content::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .settings-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+  
+  .settings-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
   }
   
   .settings-panel {
     display: none;
-    padding: 24px;
+    padding: 80px 32px 32px 32px;
   }
   
   .settings-panel.active {
@@ -644,7 +689,7 @@
   
   /* Shortcuts Layout */
   .shortcuts-content {
-    overflow-y: visible;
+    /* No custom height or overflow - let parent handle scrolling */
   }
   
   .shortcuts-section {
@@ -661,7 +706,7 @@
     font-weight: 600;
     margin: 0 0 16px 0;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--bd);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   }
   
   .shortcuts-list {
@@ -689,20 +734,25 @@
     background: var(--sh);
     padding: 4px 8px;
     border-radius: 4px;
-    border: 1px solid var(--bd);
+    border: 1px solid rgba(255, 255, 255, 0.3);
     font-weight: 500;
   }
   
 
   .setting-group {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
+  }
+
+  .setting-group:last-child {
+    margin-bottom: 0;
   }
 
   .setting-group label {
     display: block;
     color: #fff;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
     font-weight: 500;
+    font-size: 14px;
   }
 
   .setting-group input[type="range"] {
@@ -741,14 +791,20 @@
 
   .setting-group input[type="number"] {
     width: 80px;
-    padding: 8px 12px;
+    padding: 10px 12px;
     border: 1px solid var(--bd);
-    border-radius: 4px;
-    background: var(--ib);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
     color: #fff;
     font-size: 14px;
     outline: none;
     -moz-appearance: textfield;
+    transition: border-color 0.2s, background-color 0.2s;
+  }
+  
+  .setting-group input[type="number"]:focus {
+    border-color: #344532;
+    background: rgba(255, 255, 255, 0.15);
   }
 
   .setting-group input[type="number"]::-webkit-outer-spin-button,

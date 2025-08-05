@@ -413,7 +413,7 @@ function createNewDocument() {
 
 function clearCanvas() {
   canvas.querySelectorAll('.note').forEach(n => n.remove());
-  logo.classList.remove('tl');
+  logo.classList.remove('slide-away', 'hidden');
   hasTyped = false;
   selectedNotes.clear();
 }
@@ -425,7 +425,8 @@ function loadDocument(id) {
   
   currentDocId = id;
   if (doc.notes.length) {
-    logo.classList.add('tl');
+    logo.classList.add('slide-away');
+    setTimeout(() => logo.classList.add('hidden'), 500);
     hasTyped = true;
   }
   
@@ -707,9 +708,10 @@ function showSettingsModal() {
   modal.className = 'modal';
   modal.innerHTML = `
     <div class="modal-content settings-modal tabbed-modal">
+      <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
       <div class="settings-header">
-        <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
-        <h3>Options</h3>
+        <h3>General</h3>
+        <p class="tab-description">Application settings and preferences</p>
       </div>
       
       <div class="settings-body">
@@ -777,6 +779,7 @@ function showSettingsModal() {
   const tabs = modal.querySelectorAll('.settings-tab');
   const panels = modal.querySelectorAll('.settings-panel');
   const headerTitle = modal.querySelector('.settings-header h3');
+  const headerDescription = modal.querySelector('.settings-header .tab-description');
   
   tabs.forEach(tab => {
     tab.onclick = () => {
@@ -791,11 +794,13 @@ function showSettingsModal() {
         targetPanel.classList.add('active');
       }
       
-      // Update header title based on active tab
+      // Update header title and description based on active tab
       if (tab.dataset.tab === 'options') {
-        headerTitle.textContent = 'Options';
+        headerTitle.textContent = 'General';
+        headerDescription.textContent = 'Application settings and preferences';
       } else if (tab.dataset.tab === 'shortcuts') {
-        headerTitle.textContent = 'Keyboard Shortcuts';
+        headerTitle.textContent = 'Shortcuts';
+        headerDescription.textContent = 'Keyboard shortcuts and hotkeys';
       }
     };
   });
@@ -931,7 +936,8 @@ function setupNote(note, noteObj) {
   note.addEventListener('input', () => {
     if (!hasTyped && note.textContent?.length) {
       hasTyped = true;
-      logo.classList.add('tl');
+      logo.classList.add('slide-away');
+      setTimeout(() => logo.classList.add('hidden'), 500);
     }
     saveCurrentDocument();
   });
