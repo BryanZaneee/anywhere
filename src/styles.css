@@ -135,6 +135,18 @@
   #toolbar.show {
     top: 20px;
   }
+
+  /* Toolbar hover zone - invisible area at top to reveal toolbar */
+  #toolbarHoverZone {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
+    z-index: 999;
+    pointer-events: auto;
+    background: transparent;
+  }
   
   #toolbar button {
     background: none;
@@ -429,7 +441,7 @@
   }
   
   .modal-buttons .confirm {
-    background: #63001F;
+    background: #34453280;
     color: #fff;
   }
   
@@ -487,10 +499,28 @@
     transform: scale(1.2);
   }
 
+  .setting-group input[type="number"] {
+    width: 80px;
+    padding: 8px 12px;
+    border: 1px solid var(--bd);
+    border-radius: 4px;
+    background: var(--ib);
+    color: #fff;
+    font-size: 14px;
+    outline: none;
+    -moz-appearance: textfield;
+  }
+
+  .setting-group input[type="number"]::-webkit-outer-spin-button,
+  .setting-group input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
   .delete-all-btn {
     width: 100%;
     padding: 12px;
-    background: #dc2626;
+    background: #63001F;
     color: white;
     border: none;
     border-radius: 6px;
@@ -501,7 +531,7 @@
   }
 
   .delete-all-btn:hover {
-    background: #b91c1c;
+    background: #4a0017;
   }
 
   .modal-buttons .delete-confirm {

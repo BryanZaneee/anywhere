@@ -16,6 +16,10 @@ let justCompletedSelection = false;
 let headerIdleTimer = null;
 let headerIdleTimeout = 10000; // 10 seconds default
 let headerCanHide = true;
+let isToolbarHovered = false;
+let headerTimerRetryCount = 0;
+const MAX_TIMER_RETRIES = 5;
+let shouldShowToolbarOnHover = false;
 
 // Undo/Redo system
 let documentHistory = [];
@@ -31,6 +35,11 @@ const sidebar = $('sidebar');
 const notesList = $('notesList');
 const searchInput = $('searchInput');
 const themeText = $('themeText');
+
+// Create toolbar hover zone
+const toolbarHoverZone = document.createElement('div');
+toolbarHoverZone.id = 'toolbarHoverZone';
+document.body.appendChild(toolbarHoverZone);
 
 // Theme management
 function loadTheme() {
@@ -57,23 +66,37 @@ function saveSettings() {
   localStorage.setItem('anywhereSettings', JSON.stringify(settings));
 }
 
+// Helper function to show toolbar properly
+function showToolbar() {
+  toolbar.classList.add('show');
+  shouldShowToolbarOnHover = true; // Enable hover zone when toolbar is shown
+  resetHeaderTimer();
+}
+
 // Header auto-hide system
 function resetHeaderTimer() {
   if (!headerCanHide) return;
   
-  // Show header
-  logo.style.opacity = '1';
+  // Reset retry counter on new timer start
+  headerTimerRetryCount = 0;
   
   // Clear existing timer
   if (headerIdleTimer) {
     clearTimeout(headerIdleTimer);
   }
   
-  // Set new timer
+  // Set new timer to hide toolbar
   headerIdleTimer = setTimeout(() => {
-    if (headerCanHide) {
-      logo.style.opacity = '0';
+    if (headerCanHide && toolbar.classList.contains('show') && !isToolbarHovered) {
+      toolbar.classList.remove('show');
+      shouldShowToolbarOnHover = true; // Keep hover zone active after auto-hide
+      headerTimerRetryCount = 0; // Reset counter on successful hide
+    } else if (isToolbarHovered && headerTimerRetryCount < MAX_TIMER_RETRIES) {
+      // If toolbar is hovered when timer expires, restart timer (with retry limit)
+      headerTimerRetryCount++;
+      resetHeaderTimer();
     }
+    // If max retries reached, stop trying to avoid infinite recursion
   }, headerIdleTimeout);
 }
 
@@ -82,6 +105,25 @@ function initHeaderAutoHide() {
   const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
   events.forEach(event => {
     document.addEventListener(event, resetHeaderTimer, true);
+  });
+  
+  // Add hover detection for toolbar
+  toolbar.addEventListener('mouseenter', () => {
+    isToolbarHovered = true;
+  });
+  
+  toolbar.addEventListener('mouseleave', () => {
+    isToolbarHovered = false;
+    // Restart timer when mouse leaves toolbar
+    resetHeaderTimer();
+  });
+  
+  // Add hover zone detection to show toolbar when cursor is at top
+  toolbarHoverZone.addEventListener('mouseenter', () => {
+    // Only show toolbar if hover zone is active and there's content that could use formatting
+    if (shouldShowToolbarOnHover && (hasTyped || selectedNotes.size > 0 || currentNote)) {
+      showToolbar();
+    }
   });
   
   // Start the timer
@@ -395,14 +437,14 @@ function showSettingsModal() {
       <h3>Settings</h3>
       
       <div class="setting-group">
-        <label for="idleTimeSlider">Header idle time: <span id="idleTimeValue">${headerIdleTimeout / 1000}s</span></label>
-        <input type="range" id="idleTimeSlider" min="5" max="60" value="${headerIdleTimeout / 1000}" step="1">
+        <label for="idleTimeInput">Toolbar auto-hide delay (seconds):</label>
+        <input type="number" id="idleTimeInput" min="1" max="99" value="${headerIdleTimeout / 1000}">
       </div>
       
       <div class="setting-group">
         <label>
           <input type="checkbox" id="headerToggle" ${headerCanHide ? 'checked' : ''}>
-          Allow header to auto-hide
+          Allow toolbar to auto-hide
         </label>
       </div>
       
@@ -417,20 +459,24 @@ function showSettingsModal() {
     </div>
   `;
   
-  const idleTimeSlider = modal.querySelector('#idleTimeSlider');
-  const idleTimeValue = modal.querySelector('#idleTimeValue');
+  const idleTimeInput = modal.querySelector('#idleTimeInput');
   const headerToggle = modal.querySelector('#headerToggle');
   
-  // Update slider value display
-  idleTimeSlider.oninput = () => {
-    idleTimeValue.textContent = idleTimeSlider.value + 's';
+  // Validate number input
+  idleTimeInput.oninput = () => {
+    let value = parseInt(idleTimeInput.value);
+    if (isNaN(value) || value < 1) {
+      idleTimeInput.value = 1;
+    } else if (value > 99) {
+      idleTimeInput.value = 99;
+    }
   };
   
   modal.querySelector('.cancel').onclick = () => modal.remove();
   
   modal.querySelector('.confirm').onclick = () => {
     // Save settings
-    headerIdleTimeout = parseInt(idleTimeSlider.value) * 1000;
+    headerIdleTimeout = parseInt(idleTimeInput.value) * 1000;
     headerCanHide = headerToggle.checked;
     saveSettings();
     
@@ -441,7 +487,8 @@ function showSettingsModal() {
       if (headerIdleTimer) {
         clearTimeout(headerIdleTimer);
       }
-      logo.style.opacity = '1';
+      // When auto-hide is disabled, ensure toolbar stays visible if it should be shown
+      // (The CSS class system handles the visibility automatically)
     }
     
     modal.remove();
@@ -523,7 +570,7 @@ function setupNote(note, noteObj) {
   
   note.addEventListener('focus', () => {
     currentNote = noteObj;
-    toolbar.classList.add('show');
+    showToolbar();
     updateToolbar();
   });
   
@@ -544,7 +591,7 @@ function setupNote(note, noteObj) {
     // Show toolbar when text is selected
     if (window.getSelection().toString()) {
       currentNote = noteObj;
-      toolbar.classList.add('show');
+      showToolbar();
       updateToolbar();
     }
   });
@@ -632,15 +679,16 @@ function updateSelection() {
       startY = e.clientY;
     };
     
-    toolbar.classList.add('show');
+    showToolbar();
     updateToolbar();
   } else if (selectedNotes.size === 1) {
     const note = Array.from(selectedNotes)[0];
     currentNote = note.__noteData;
-    toolbar.classList.add('show');
+    showToolbar();
     updateToolbar();
   } else {
     toolbar.classList.remove('show');
+    shouldShowToolbarOnHover = false; // Disable hover zone when no selection
   }
 }
 
@@ -973,6 +1021,7 @@ document.addEventListener('click', e => {
       document.activeElement?.classList.contains('note') === false &&
       selectedNotes.size === 0) {
     toolbar.classList.remove('show');
+    shouldShowToolbarOnHover = false; // Disable hover zone when clicking elsewhere
   }
 });
 
