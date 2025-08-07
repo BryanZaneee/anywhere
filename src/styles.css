@@ -226,6 +226,43 @@
     outline: none;
   }
   
+  .font-size-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  
+  .font-size-controls button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+  }
+  
+  .font-size-controls input {
+    width: 50px;
+    padding: 4px 6px;
+    border: 1px solid var(--bd);
+    border-radius: 4px;
+    background: rgba(52, 69, 50, 0.95);
+    color: #ffffff;
+    font-size: 14px;
+    text-align: center;
+    outline: none;
+    -moz-appearance: textfield;
+  }
+  
+  .font-size-controls input::-webkit-outer-spin-button,
+  .font-size-controls input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  
   .sep {
     width: 1px;
     height: 20px;
@@ -426,34 +463,9 @@
     cursor: default;
   }
 
-  #canvas.hand-mode {
-    cursor: grab;
-  }
-
-  #canvas.hand-mode.panning {
-    cursor: grabbing;
-  }
-
-  #canvas.pan-mode {
-    cursor: grab;
-  }
-
-  #canvas.pan-mode.panning {
-    cursor: grabbing;
-  }
-
   /* Move tool cursor when hovering over notes */
   #canvas.move-mode .note {
     cursor: move !important;
-  }
-
-  /* Pan cursor for spacebar mode */
-  body.pan-active #canvas {
-    cursor: grab !important;
-  }
-
-  body.pan-active.panning #canvas {
-    cursor: grabbing !important;
   }
   
   .sb-footer {

@@ -58,15 +58,29 @@ interface DocumentHistoryState {
 
 type ThemeMode = 'light' | 'dark';
 type Platform = 'mac' | 'windows';
-type ToolMode = 'default' | 'move' | 'hand';
+type ToolMode = 'default' | 'move';
 type FontSize = '12px' | '14px' | '16px' | '18px' | '20px' | '24px' | '28px' | '32px' | '48px';
 type FontFamily = 
   | "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-  | "Georgia,'Times New Roman',serif"
-  | "'Courier New',Consolas,monospace"
   | "Arial,Helvetica,sans-serif"
+  | "'Helvetica Neue',Helvetica,sans-serif"
+  | "Verdana,Geneva,sans-serif"
+  | "'Trebuchet MS',sans-serif"
+  | "'Lucida Sans',sans-serif"
+  | "Tahoma,Geneva,sans-serif"
+  | "'Segoe UI',Tahoma,Geneva,sans-serif"
+  | "Georgia,'Times New Roman',serif"
   | "'Times New Roman',Times,serif"
-  | "Verdana,Geneva,sans-serif";
+  | "'Book Antiqua',Palatino,serif"
+  | "Garamond,serif"
+  | "'Courier New',Courier,monospace"
+  | "Monaco,'Lucida Console',monospace"
+  | "Consolas,'Liberation Mono',monospace"
+  | "'Fira Code',monospace"
+  | "Impact,'Arial Black',sans-serif"
+  | "'Comic Sans MS',cursive"
+  | "Papyrus,fantasy"
+  | "'Brush Script MT',cursive";
 
 interface DocumentsStorage {
   [id: string]: AppDocument;
@@ -97,10 +111,6 @@ let shouldShowToolbarOnHover: boolean = true;
 
 // Tool system state
 let currentTool: ToolMode = 'default';
-let isPanning: boolean = false;
-let panOffset: {x: number, y: number} = {x: 0, y: 0};
-let lastPanPoint: {x: number, y: number} = {x: 0, y: 0};
-let isSpacebarDown: boolean = false;
 let isDraggingNote: boolean = false;
 let draggedNote: HTMLDivElement | null = null;
 let resizeHandles: HTMLDivElement[] = [];
@@ -151,6 +161,7 @@ function updateUI(): void {
   updateToolbar();
 }
 
+
 // Tool management functions
 function setToolMode(mode: ToolMode): void {
   currentTool = mode;
@@ -162,13 +173,9 @@ function toggleMoveTool(): void {
   setToolMode(currentTool === 'move' ? 'default' : 'move');
 }
 
-function toggleHandTool(): void {
-  setToolMode(currentTool === 'hand' ? 'default' : 'hand');
-}
 
 function updateCanvasClasses(): void {
   canvas.classList.toggle('move-mode', currentTool === 'move');
-  canvas.classList.toggle('hand-mode', currentTool === 'hand');
   
   // Update note contentEditable based on tool mode
   canvas.querySelectorAll<HTMLDivElement>('.note').forEach(note => {
@@ -183,10 +190,8 @@ function updateCanvasClasses(): void {
 
 function updateToolbarActiveStates(): void {
   const moveToolBtn = $('moveTool') as HTMLButtonElement;
-  const handToolBtn = $('handTool') as HTMLButtonElement;
   
   moveToolBtn.classList.toggle('active', currentTool === 'move');
-  handToolBtn.classList.toggle('active', currentTool === 'hand');
 }
 
 // Resize handles management
@@ -1440,7 +1445,7 @@ function updateToolbar(): void {
       ($('alignRight') as HTMLButtonElement).classList.toggle('active', s.align === 'right');
       ($('bulletList') as HTMLButtonElement).classList.toggle('active', s.listType === 'bullet');
       ($('numberedList') as HTMLButtonElement).classList.toggle('active', s.listType === 'numbered');
-      ($('fontSize') as HTMLSelectElement).value = s.fontSize;
+      updateFontSizeInput();
       ($('fontFamily') as HTMLSelectElement).value = s.fontFamily;
     }
   } else if (currentNote) {
@@ -1454,23 +1459,13 @@ function updateToolbar(): void {
     ($('alignRight') as HTMLButtonElement).classList.toggle('active', s.align === 'right');
     ($('bulletList') as HTMLButtonElement).classList.toggle('active', s.listType === 'bullet');
     ($('numberedList') as HTMLButtonElement).classList.toggle('active', s.listType === 'numbered');
-    ($('fontSize') as HTMLSelectElement).value = s.fontSize;
+    updateFontSizeInput();
     ($('fontFamily') as HTMLSelectElement).value = s.fontFamily;
   }
 }
 
 // Canvas interactions
 canvas.addEventListener('mousedown', e => {
-  // Handle pan mode (hand tool, spacebar held, or middle mouse button)
-  if (currentTool === 'hand' || isSpacebarDown || e.button === 1) {
-    e.preventDefault();
-    isPanning = true;
-    lastPanPoint = { x: e.clientX, y: e.clientY };
-    document.body.classList.add('panning');
-    canvas.classList.add('panning');
-    return;
-  }
-  
   // Existing selection logic
   if (!(e.target as HTMLElement).classList.contains('note') && e.target !== logo && e.target !== dragHandle) {
     isSelecting = true;
@@ -1488,22 +1483,6 @@ canvas.addEventListener('mousedown', e => {
 });
 
 canvas.addEventListener('mousemove', e => {
-  // Handle panning
-  if (isPanning) {
-    e.preventDefault();
-    const dx = e.clientX - lastPanPoint.x;
-    const dy = e.clientY - lastPanPoint.y;
-    
-    panOffset.x += dx;
-    panOffset.y += dy;
-    
-    // Apply pan transform to canvas
-    canvas.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px)`;
-    
-    lastPanPoint = { x: e.clientX, y: e.clientY };
-    return;
-  }
-  
   if (isSelecting && selectBox) {
     const x = Math.min(e.clientX, startX);
     const y = Math.min(e.clientY, startY);
@@ -1540,14 +1519,6 @@ canvas.addEventListener('mousemove', e => {
 });
 
 canvas.addEventListener('mouseup', e => {
-  // Handle pan end
-  if (isPanning) {
-    isPanning = false;
-    document.body.classList.remove('panning');
-    canvas.classList.remove('panning');
-    return;
-  }
-  
   if (isSelecting) {
     isSelecting = false;
     if (selectBox) {
@@ -1733,7 +1704,6 @@ document.addEventListener('mouseup', () => {
 });
 
 // Tool buttons
-$('handTool').onclick = toggleHandTool;
 $('moveTool').onclick = toggleMoveTool;
 
 // Toolbar buttons
@@ -1791,8 +1761,8 @@ $('moveTool').onclick = toggleMoveTool;
 $('bulletList').onclick = toggleBulletList;
 $('numberedList').onclick = toggleNumberedList;
 
-($('fontSize') as HTMLSelectElement).onchange = () => {
-  const size = ($('fontSize') as HTMLSelectElement).value as FontSize;
+// Font size controls
+function applyFontSize(size: string): void {
   const sel = window.getSelection();
   
   if (sel?.toString() && sel.rangeCount) {
@@ -1828,6 +1798,50 @@ $('numberedList').onclick = toggleNumberedList;
     applyStylesAndUpdate(currentNote.el, currentNote.styles);
   }
   focusCurrentNoteIfSingle();
+}
+
+function updateFontSizeInput(): void {
+  const input = $('fontSizeInput') as HTMLInputElement;
+  if (selectedNotes.size > 1) {
+    const firstNote = (Array.from(selectedNotes)[0] as any).__noteData;
+    if (firstNote) {
+      input.value = parseInt(firstNote.styles.fontSize).toString();
+    }
+  } else if (currentNote) {
+    input.value = parseInt(currentNote.styles.fontSize).toString();
+  }
+}
+
+($('fontSizeInput') as HTMLInputElement).onchange = () => {
+  const input = $('fontSizeInput') as HTMLInputElement;
+  let size = parseInt(input.value);
+  
+  // Validate and clamp size
+  if (isNaN(size) || size < 8) {
+    size = 8;
+    input.value = '8';
+  } else if (size > 72) {
+    size = 72;
+    input.value = '72';
+  }
+  
+  applyFontSize(size + 'px');
+};
+
+($('fontSizeDecrease') as HTMLButtonElement).onclick = () => {
+  const input = $('fontSizeInput') as HTMLInputElement;
+  let currentSize = parseInt(input.value) || 16;
+  const newSize = Math.max(8, currentSize - 1);
+  input.value = newSize.toString();
+  applyFontSize(newSize + 'px');
+};
+
+($('fontSizeIncrease') as HTMLButtonElement).onclick = () => {
+  const input = $('fontSizeInput') as HTMLInputElement;
+  let currentSize = parseInt(input.value) || 16;
+  const newSize = Math.min(72, currentSize + 1);
+  input.value = newSize.toString();
+  applyFontSize(newSize + 'px');
 };
 
 ($('fontFamily') as HTMLSelectElement).onchange = () => {
@@ -1894,13 +1908,6 @@ document.addEventListener('keydown', e => {
   }
   
   
-  // Handle spacebar for pan mode
-  if (e.key === ' ' && !isSpacebarDown && !(document.activeElement as HTMLElement).classList.contains('note')) {
-    e.preventDefault();
-    isSpacebarDown = true;
-    document.body.classList.add('pan-active');
-    return;
-  }
   
   // Handle Undo/Redo
   if (ctrlKey && e.key.toLowerCase() === 'z' && !(document.activeElement as HTMLElement).classList.contains('note')) {
@@ -2146,22 +2153,7 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// Prevent context menu on middle mouse button
-canvas.addEventListener('contextmenu', e => {
-  if (e.button === 1 || isPanning) {
-    e.preventDefault();
-  }
-});
 
-// Global keyboard shortcuts - keyup
-document.addEventListener('keyup', e => {
-  // Handle spacebar release for pan mode
-  if (e.key === ' ' && isSpacebarDown) {
-    isSpacebarDown = false;
-    document.body.classList.remove('pan-active', 'panning');
-    isPanning = false;
-  }
-});
 
 // Initialize
 loadTheme();
