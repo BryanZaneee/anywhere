@@ -1,0 +1,26 @@
+{
+  "name": "anywhere",
+  "version": "1.0.0",
+  "description": "A freeform note-taking application with TypeScript",
+  "main": "src/app.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "serve": "python -m http.server 8080",
+    "dev-server": "live-server src --port=3000 --wait=500",
+    "dev": "concurrently \"npm run watch\" \"live-server --port=3000 --wait=500 --open=src/index.html\""
+  },
+  "keywords": [
+    "notes",
+    "typescript",
+    "canvas",
+    "note-taking"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "live-server": "^1.2.2",
+    "typescript": "^5.3.0"
+  }
+}

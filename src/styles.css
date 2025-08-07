@@ -164,7 +164,7 @@
   /* Toolbar */
   #toolbar {
     position: fixed;
-    top: -60px;
+    top: 20px;
     left: 50%;
     transform: translateX(-50%);
     background: var(--tb);
@@ -190,7 +190,7 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 80px;
+    height: 100px;
     z-index: 999;
     pointer-events: auto;
     background: transparent;
@@ -420,6 +420,41 @@
   #sidebar.exp ~ #canvas {
     left: 260px;
   }
+
+  /* Tool-specific cursor styles */
+  #canvas.move-mode {
+    cursor: default;
+  }
+
+  #canvas.hand-mode {
+    cursor: grab;
+  }
+
+  #canvas.hand-mode.panning {
+    cursor: grabbing;
+  }
+
+  #canvas.pan-mode {
+    cursor: grab;
+  }
+
+  #canvas.pan-mode.panning {
+    cursor: grabbing;
+  }
+
+  /* Move tool cursor when hovering over notes */
+  #canvas.move-mode .note {
+    cursor: move !important;
+  }
+
+  /* Pan cursor for spacebar mode */
+  body.pan-active #canvas {
+    cursor: grab !important;
+  }
+
+  body.pan-active.panning #canvas {
+    cursor: grabbing !important;
+  }
   
   .sb-footer {
     margin-top: auto;
@@ -444,6 +479,25 @@
     cursor: move;
     z-index: 100;
   }
+
+  .resize-handle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #344532;
+    border: 1px solid #fff;
+    border-radius: 1px;
+    z-index: 101;
+  }
+
+  .resize-handle.corner-nw { cursor: nw-resize; }
+  .resize-handle.corner-ne { cursor: ne-resize; }
+  .resize-handle.corner-sw { cursor: sw-resize; }
+  .resize-handle.corner-se { cursor: se-resize; }
+  .resize-handle.edge-n { cursor: n-resize; }
+  .resize-handle.edge-s { cursor: s-resize; }
+  .resize-handle.edge-w { cursor: w-resize; }
+  .resize-handle.edge-e { cursor: e-resize; }
   
   /* Modal */
   .modal {

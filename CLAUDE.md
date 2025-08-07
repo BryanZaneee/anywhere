@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Anywhere** is a freeform note-taking application built with vanilla HTML, CSS, and JavaScript. It provides an infinite canvas where users can click anywhere to create text notes with rich formatting options.
+**Anywhere** is a freeform note-taking application built with TypeScript, HTML, and CSS. It provides an infinite canvas where users can click anywhere to create text notes with rich formatting options.
 
 ## Architecture
 
@@ -25,40 +25,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Data Structure
 
-```javascript
-documents = {
-  [id]: {
-    id: string,
-    title: string,
-    notes: [
-      {
-        x: number,
-        y: number, 
-        text: string,
-        html: string,
-        styles: {
-          bold: boolean,
-          italic: boolean,
-          underline: boolean,
-          strike: boolean,
-          fontSize: string,
-          fontFamily: string,
-          align: 'left'|'center'|'right'
-        }
-      }
-    ],
-    pinned: boolean
-  }
+```typescript
+interface Document {
+  id: string;
+  title: string;
+  notes: NoteData[];
+  pinned: boolean;
+  hasCustomTitle?: boolean;
+}
+
+interface NoteData {
+  x: number;
+  y: number;
+  text: string;
+  html: string;
+  styles: NoteStyles;
+}
+
+interface NoteStyles {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strike: boolean;
+  fontSize: string;
+  fontFamily: string;
+  align: 'left' | 'center' | 'right';
+  listType: 'none' | 'bullet' | 'numbered';
 }
 ```
 
 ## Development Commands
 
-Since this is a client-side only application with no build process:
+The project now uses TypeScript for enhanced type safety and developer experience:
 
-- **Development**: Open `src/index.html` directly in a browser or use a local server
-- **Testing**: Manual testing in browser - no automated test suite
-- **No package.json**: Pure vanilla web technologies, no dependencies or build tools
+- **Build**: `npm run build` - Compiles TypeScript to JavaScript in `/dist` folder
+- **Watch Mode**: `npm run watch` - Automatically recompile TypeScript on changes
+- **Development**: Open `src/index.html` in a browser (references compiled JS from `/dist`)
+- **Local Server**: `npm run serve` - Serves application on localhost:8080
+- **Testing**: Manual testing in browser - no automated test suite yet
 
 ## Key Features
 
@@ -76,16 +80,23 @@ Since this is a client-side only application with no build process:
 ```
 src/
 ├── index.html     # Main application structure and UI
-├── app.js         # Core application logic and interactions  
+├── app.ts         # Core application logic and interactions (TypeScript)
+├── types.ts       # TypeScript type definitions
 └── styles.css     # Complete styling including dark theme
+dist/
+├── app.js         # Compiled JavaScript (generated)
+├── app.js.map     # Source map for debugging
+├── types.js       # Compiled type definitions
+└── types.js.map   # Source map for types
 ```
 
 ## State Management Patterns
 
-- **Global Variables**: All state managed through global variables at top of app.js
+- **Global Variables**: All state managed through typed global variables at top of app.ts
 - **Event-Driven**: Heavy use of DOM event listeners for interactions
 - **Auto-Save**: Document changes trigger automatic localStorage updates
 - **Theme Persistence**: Theme preference saved to localStorage
+- **Type Safety**: All data structures and functions are fully typed for better reliability
 
 ## UI Interaction Patterns
 
