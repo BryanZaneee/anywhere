@@ -1172,11 +1172,12 @@ function showDeleteAllModal(): void {
 function initializeLayersPanel(): void {
   layersListElement = document.getElementById('layersList') as HTMLDivElement;
   
-  // Set up layers toggle
+  // Set up layers toggle - make entire header clickable
+  const sectionHeader = document.querySelector('.section-header') as HTMLDivElement;
   const toggleLayers = document.getElementById('toggleLayers') as HTMLButtonElement;
   const layersList = document.getElementById('layersList') as HTMLDivElement;
   
-  toggleLayers.addEventListener('click', () => {
+  sectionHeader.addEventListener('click', () => {
     const isCollapsed = toggleLayers.classList.contains('collapsed');
     toggleLayers.classList.toggle('collapsed', !isCollapsed);
     layersList.style.display = isCollapsed ? 'block' : 'none';
