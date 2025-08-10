@@ -1,4 +1,4 @@
-# Anywhere - Freeform Note Taking
+# Anyplace - Freeform Note Taking
 
 A freeform note-taking application that provides an infinite canvas where you can click anywhere to create text notes with rich formatting options.
 

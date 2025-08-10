@@ -118,6 +118,13 @@ let isResizing: boolean = false;
 let resizeHandle: HTMLDivElement | null = null;
 let resizeStartSize: number = 16; // Initial font size
 
+// Alignment system state
+let alignmentSystem: any = null;
+let layersListElement: HTMLDivElement | null = null;
+let noteZIndexCounter: number = 100; // For managing layer order
+let dragStartPositions: Map<HTMLDivElement, { x: number, y: number }> = new Map();
+let snapEnabled: boolean = true; // Alignment snapping enabled by default
+
 // Utility functions
 function focusCurrentNoteIfSingle(): void {
   if (currentNote && selectedNotes.size <= 1) {
@@ -170,7 +177,9 @@ function setToolMode(mode: ToolMode): void {
 }
 
 function toggleMoveTool(): void {
-  setToolMode(currentTool === 'move' ? 'default' : 'move');
+  const newTool = currentTool === 'move' ? 'default' : 'move';
+  console.log('Smart Align Debug - Tool changed from', currentTool, 'to', newTool);
+  setToolMode(newTool);
 }
 
 
@@ -190,8 +199,10 @@ function updateCanvasClasses(): void {
 
 function updateToolbarActiveStates(): void {
   const moveToolBtn = $('moveTool') as HTMLButtonElement;
+  const snapToggleBtn = $('snapToggle') as HTMLButtonElement;
   
   moveToolBtn.classList.toggle('active', currentTool === 'move');
+  snapToggleBtn.classList.toggle('active', snapEnabled);
 }
 
 // Resize handles management
@@ -292,6 +303,69 @@ const sidebar = $('sidebar') as HTMLDivElement;
 const notesList = $('notesList') as HTMLDivElement;
 const searchInput = $('searchInput') as HTMLInputElement;
 const themeText = $('themeText') as HTMLSpanElement;
+let guidesCanvas: HTMLCanvasElement;
+
+// Initialize alignment system
+guidesCanvas = $('alignmentGuides') as HTMLCanvasElement;
+console.log('Smart Align Debug - Canvas found:', !!guidesCanvas);
+console.log('Smart Align Debug - AlignmentCalculator available:', !!(window as any).AlignmentCalculator);
+console.log('Smart Align Debug - GuideRenderer available:', !!(window as any).GuideRenderer);
+
+// Helper function to ensure we have test notes for alignment
+function ensureTestNotes(): void {
+  const existingNotes = canvas.querySelectorAll<HTMLDivElement>('.note');
+  console.log('Smart Align Debug - Existing notes:', existingNotes.length);
+  
+  // Create test notes if we have fewer than 2
+  if (existingNotes.length < 2) {
+    const positions = [
+      { x: 100, y: 100, text: 'Test Note 1' },
+      { x: 300, y: 100, text: 'Test Note 2' },
+      { x: 200, y: 250, text: 'Test Note 3' }
+    ];
+    
+    positions.slice(existingNotes.length).forEach((pos, index) => {
+      const note = document.createElement('div');
+      note.className = 'note';
+      note.id = `test-note-${existingNotes.length + index}`;
+      note.contentEditable = currentTool === 'default' ? 'true' : 'false';
+      note.style.left = pos.x + 'px';
+      note.style.top = pos.y + 'px';
+      note.innerHTML = `<p>${pos.text}</p>`;
+      
+      const noteObj: NoteObject = {
+        el: note,
+        styles: {
+          bold: false,
+          italic: false,
+          underline: false,
+          strike: false,
+          fontSize: '16px',
+          fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+          align: 'left',
+          listType: 'none'
+        }
+      };
+      
+      canvas.appendChild(note);
+      setupNote(note, noteObj);
+      console.log('Smart Align Debug - Created test note:', pos.text, 'at', pos.x, pos.y);
+    });
+    
+    saveCurrentDocument();
+  }
+}
+
+// Initialize new simplified alignment system
+if (guidesCanvas && (window as any).AlignmentSystem) {
+  alignmentSystem = new (window as any).AlignmentSystem(guidesCanvas);
+  console.log('Alignment system initialized successfully');
+} else {
+  console.warn('Failed to initialize alignment system:', {
+    canvas: !!guidesCanvas,
+    alignmentSystem: !!(window as any).AlignmentSystem
+  });
+}
 
 // Create toolbar hover zone
 const toolbarHoverZone = document.createElement('div');
@@ -639,9 +713,10 @@ function loadDocument(id: string): void {
     hasTyped = true;
   }
   
-  doc.notes.forEach(noteData => {
+  doc.notes.forEach((noteData, index) => {
     const note = document.createElement('div');
     note.className = 'note';
+    note.id = `note-${currentDocId}-${index}`;
     note.contentEditable = currentTool === 'default' ? 'true' : 'false';
     note.style.left = noteData.x + 'px';
     note.style.top = noteData.y + 'px';
@@ -660,6 +735,7 @@ function loadDocument(id: string): void {
   
   updateNotesList();
   updateCanvasClasses(); // Ensure notes respect current tool mode
+  updateLayersPanel(); // Update layers panel when document is loaded
 }
 
 function saveCurrentDocument(): void {
@@ -1092,9 +1168,187 @@ function showDeleteAllModal(): void {
   document.body.appendChild(modal);
 }
 
+// Layer management functions
+function initializeLayersPanel(): void {
+  layersListElement = document.getElementById('layersList') as HTMLDivElement;
+  
+  // Set up layers toggle
+  const toggleLayers = document.getElementById('toggleLayers') as HTMLButtonElement;
+  const layersList = document.getElementById('layersList') as HTMLDivElement;
+  
+  toggleLayers.addEventListener('click', () => {
+    const isCollapsed = toggleLayers.classList.contains('collapsed');
+    toggleLayers.classList.toggle('collapsed', !isCollapsed);
+    layersList.style.display = isCollapsed ? 'block' : 'none';
+  });
+  
+  updateLayersPanel();
+}
+
+function updateLayersPanel(): void {
+  if (!layersListElement) return;
+  
+  const allNotes = Array.from(canvas.querySelectorAll<HTMLDivElement>('.note'));
+  
+  // Sort notes by z-index (highest first = top layer)
+  allNotes.sort((a, b) => {
+    const aZ = parseInt(a.style.zIndex) || 0;
+    const bZ = parseInt(b.style.zIndex) || 0;
+    return bZ - aZ;
+  });
+  
+  layersListElement!.innerHTML = '';
+  
+  allNotes.forEach((note, index) => {
+    const noteData = (note as any).__noteData as NoteObject;
+    const layerItem = document.createElement('div');
+    layerItem.className = 'layer-item';
+    layerItem.draggable = true;
+    
+    // Get note preview text
+    const text = noteData ? 
+      (noteData.styles ? note.textContent || 'Empty Note' : note.textContent || 'Empty Note') :
+      note.textContent || 'Empty Note';
+    const previewText = text.slice(0, 30) + (text.length > 30 ? '...' : '');
+    
+    layerItem.innerHTML = `
+      <button class="layer-visibility" title="Toggle visibility">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      </button>
+      <span class="layer-name">${previewText}</span>
+      <div class="layer-drag-handle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </div>
+    `;
+    
+    // Store reference to note
+    (layerItem as any).__note = note;
+    
+    // Handle layer selection
+    layerItem.addEventListener('click', (e) => {
+      if (e.target === layerItem.querySelector('.layer-visibility')) return;
+      
+      selectedNotes.clear();
+      selectedNotes.add(note);
+      updateSelection();
+      
+      // Update active state
+      document.querySelectorAll('.layer-item').forEach(item => item.classList.remove('active'));
+      layerItem.classList.add('active');
+      
+      // Focus the note
+      note.focus();
+    });
+    
+    // Handle visibility toggle
+    const visibilityBtn = layerItem.querySelector('.layer-visibility') as HTMLButtonElement;
+    visibilityBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = note.style.display !== 'none';
+      note.style.display = isVisible ? 'none' : '';
+      
+      // Update icon
+      if (isVisible) {
+        visibilityBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+            <line x1="1" y1="1" x2="23" y2="23"></line>
+          </svg>
+        `;
+      } else {
+        visibilityBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        `;
+      }
+    });
+    
+    // Handle drag and drop for reordering
+    layerItem.addEventListener('dragstart', (e) => {
+      layerItem.classList.add('dragging');
+      e.dataTransfer!.effectAllowed = 'move';
+      e.dataTransfer!.setData('text/html', ''); // Required for Firefox
+    });
+    
+    layerItem.addEventListener('dragend', () => {
+      layerItem.classList.remove('dragging');
+    });
+    
+    layerItem.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'move';
+    });
+    
+    layerItem.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const draggedItem = document.querySelector('.layer-item.dragging') as HTMLDivElement;
+      if (draggedItem && draggedItem !== layerItem) {
+        const draggedNote = (draggedItem as any).__note as HTMLDivElement;
+        const targetNote = (layerItem as any).__note as HTMLDivElement;
+        
+        // Reorder z-indices
+        reorderNotesZIndex(draggedNote, targetNote);
+        updateLayersPanel();
+      }
+    });
+    
+    // Mark as active if this note is selected
+    if (selectedNotes.has(note)) {
+      layerItem.classList.add('active');
+    }
+    
+    layersListElement!.appendChild(layerItem);
+  });
+}
+
+function reorderNotesZIndex(draggedNote: HTMLDivElement, targetNote: HTMLDivElement): void {
+  const allNotes = Array.from(canvas.querySelectorAll<HTMLDivElement>('.note'));
+  
+  // Get current z-indices
+  const draggedZ = parseInt(draggedNote.style.zIndex) || 0;
+  const targetZ = parseInt(targetNote.style.zIndex) || 0;
+  
+  if (draggedZ === targetZ) return;
+  
+  // Determine if moving up or down in z-order
+  const movingUp = draggedZ < targetZ;
+  
+  allNotes.forEach(note => {
+    const currentZ = parseInt(note.style.zIndex) || 0;
+    
+    if (note === draggedNote) {
+      // Set dragged note to target position
+      note.style.zIndex = targetZ.toString();
+    } else if (movingUp && currentZ > draggedZ && currentZ <= targetZ) {
+      // Shift notes down
+      note.style.zIndex = (currentZ - 1).toString();
+    } else if (!movingUp && currentZ >= targetZ && currentZ < draggedZ) {
+      // Shift notes up
+      note.style.zIndex = (currentZ + 1).toString();
+    }
+  });
+  
+  // Save changes
+  saveCurrentDocument();
+}
+
 // Note setup and interactions
 function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
   (note as any).__noteData = noteObj;
+  
+  // Initialize z-index for layer management
+  if (!note.style.zIndex) {
+    note.style.zIndex = (++noteZIndexCounter).toString();
+  }
   
   note.addEventListener('mousedown', e => {
     // Use position-based detection to determine if click is over actual text content
@@ -1117,6 +1371,7 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
     
     // In move mode, always select the note for moving and enable dragging
     if (currentTool === 'move') {
+      console.log('Smart Align Debug - Move mode note click detected');
       if (!e.shiftKey) selectedNotes.clear();
       selectedNotes.add(note);
       updateSelection();
@@ -1125,7 +1380,17 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
       isDraggingNote = true;
       draggedNote = note;
       startX = e.clientX;
+      console.log('Smart Align Debug - Individual note drag started');
       startY = e.clientY;
+      
+      // Store initial positions of selected notes for drag handling
+      dragStartPositions.clear();
+      selectedNotes.forEach(n => {
+        dragStartPositions.set(n, {
+          x: parseInt(n.style.left) || 0,
+          y: parseInt(n.style.top) || 0
+        });
+      });
       
       e.preventDefault();
       return;
@@ -1154,7 +1419,10 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
   });
   
   note.addEventListener('blur', () => {
-    if (!note.innerHTML.trim()) note.remove();
+    if (!note.innerHTML.trim()) {
+      note.remove();
+      updateLayersPanel(); // Update layers panel when note is removed
+    }
     saveCurrentDocument();
   });
   
@@ -1164,6 +1432,8 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
       logo.classList.add('slide-away');
       setTimeout(() => logo.classList.add('hidden'), 500);
     }
+    // Update layers panel to reflect content changes
+    updateLayersPanel();
     saveCurrentDocument();
   });
   
@@ -1257,6 +1527,16 @@ function updateSelection(): void {
       isDraggingGroup = true;
       startX = e.clientX;
       startY = e.clientY;
+      console.log('Smart Align Debug - Group drag started');
+      
+      // Store initial positions of selected notes for group drag handling
+      dragStartPositions.clear();
+      selectedNotes.forEach(n => {
+        dragStartPositions.set(n, {
+          x: parseInt(n.style.left) || 0,
+          y: parseInt(n.style.top) || 0
+        });
+      });
     };
     
     showToolbar();
@@ -1557,6 +1837,7 @@ canvas.addEventListener('click', e => {
       
       const note = document.createElement('div');
       note.className = 'note';
+      note.id = `note-${currentDocId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       note.contentEditable = currentTool === 'default' ? 'true' : 'false';
       note.style.left = (e.clientX - canvas.offsetLeft) + 'px';
       note.style.top = e.clientY + 'px';
@@ -1578,6 +1859,9 @@ canvas.addEventListener('click', e => {
       canvas.appendChild(note);
       setupNote(note, noteObj);
       note.focus();
+      
+      // Update layers panel when note is created
+      updateLayersPanel();
     }
   }
 });
@@ -1595,15 +1879,62 @@ document.addEventListener('click', e => {
 });
 
 document.addEventListener('mousemove', e => {
-  if (isDraggingGroup) {
+  if (isDraggingGroup || isDraggingNote) {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
-    selectedNotes.forEach(note => {
-      const x = parseInt(note.style.left);
-      const y = parseInt(note.style.top);
-      note.style.left = (x + dx) + 'px';
-      note.style.top = (y + dy) + 'px';
-    });
+    
+    // Check if Alt key is held to temporarily disable snapping
+    const tempDisableSnap = e.altKey;
+    
+    // Visual feedback for Alt key
+    if (guidesCanvas) {
+      guidesCanvas.classList.toggle('snap-disabled', tempDisableSnap);
+    }
+    canvas.classList.toggle('snap-disabled', tempDisableSnap);
+    
+    // Handle both group and individual note dragging
+    const currentDraggedNote = isDraggingNote ? draggedNote : Array.from(selectedNotes)[0];
+    
+    if (alignmentSystem && snapEnabled && !tempDisableSnap && currentDraggedNote) {
+      // Calculate new position
+      const currentX = parseInt(currentDraggedNote.style.left) + dx;
+      const currentY = parseInt(currentDraggedNote.style.top) + dy;
+      
+      // Get all notes for alignment calculation
+      const allNotes = Array.from(canvas.querySelectorAll<HTMLDivElement>('.note'));
+      
+      // Calculate snap with new system
+      const snapResult = alignmentSystem.calculateSnap(currentDraggedNote, allNotes, currentX, currentY);
+      
+      // Apply positions with snap correction to all selected notes
+      selectedNotes.forEach(note => {
+        const x = parseInt(note.style.left);
+        const y = parseInt(note.style.top);
+        note.style.left = (x + dx + snapResult.deltaX) + 'px';
+        note.style.top = (y + dy + snapResult.deltaY) + 'px';
+      });
+      
+      // Update layer z-index when notes are moved
+      selectedNotes.forEach(note => {
+        if (!note.style.zIndex) {
+          note.style.zIndex = (++noteZIndexCounter).toString();
+        }
+      });
+    } else {
+      // Fallback to normal dragging without alignment
+      selectedNotes.forEach(note => {
+        const x = parseInt(note.style.left);
+        const y = parseInt(note.style.top);
+        note.style.left = (x + dx) + 'px';
+        note.style.top = (y + dy) + 'px';
+      });
+      
+      // Clear guides if Alt is pressed or snap is disabled
+      if (alignmentSystem && (tempDisableSnap || !snapEnabled)) {
+        alignmentSystem.clearGuides();
+      }
+    }
+    
     if (dragHandle) {
       const hx = parseInt(dragHandle.style.left);
       const hy = parseInt(dragHandle.style.top);
@@ -1616,27 +1947,8 @@ document.addEventListener('mousemove', e => {
       createResizeHandles(selectedNotes);
     }
     
-    startX = e.clientX;
-    startY = e.clientY;
-  }
-  
-  // Handle individual note dragging in move mode
-  if (isDraggingNote && draggedNote) {
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    
-    // Move all selected notes (including the dragged note)
-    selectedNotes.forEach(note => {
-      const x = parseInt(note.style.left);
-      const y = parseInt(note.style.top);
-      note.style.left = (x + dx) + 'px';
-      note.style.top = (y + dy) + 'px';
-    });
-    
-    // Update resize handles to follow the notes
-    if (currentTool === 'move' && selectedNotes.size > 0) {
-      createResizeHandles(selectedNotes);
-    }
+    // Update layers panel when notes move
+    updateLayersPanel();
     
     startX = e.clientX;
     startY = e.clientY;
@@ -1686,6 +1998,15 @@ document.addEventListener('mouseup', () => {
   if (isDraggingGroup) {
     isDraggingGroup = false;
     saveCurrentDocument();
+    
+    // Clear alignment guides
+    if (alignmentSystem) {
+      alignmentSystem.clearGuides();
+    }
+    dragStartPositions.clear();
+    
+    // Update layers panel after drag
+    updateLayersPanel();
   }
   
   // Handle note dragging end
@@ -1693,6 +2014,15 @@ document.addEventListener('mouseup', () => {
     isDraggingNote = false;
     draggedNote = null;
     saveCurrentDocument();
+    
+    // Clear alignment guides
+    if (alignmentSystem) {
+      alignmentSystem.clearGuides();
+    }
+    dragStartPositions.clear();
+    
+    // Update layers panel after drag
+    updateLayersPanel();
   }
   
   // Handle resize end
@@ -1705,6 +2035,24 @@ document.addEventListener('mouseup', () => {
 
 // Tool buttons
 $('moveTool').onclick = toggleMoveTool;
+
+// Snap toggle button
+$('snapToggle').onclick = () => {
+  snapEnabled = !snapEnabled;
+  
+  // Update alignment system settings
+  if (alignmentSystem) {
+    alignmentSystem.setEnabled(snapEnabled);
+  }
+  
+  // Update button visual state
+  updateToolbarActiveStates();
+  
+  // Clear any active guides when disabling
+  if (!snapEnabled && alignmentSystem) {
+    alignmentSystem.clearGuides();
+  }
+};
 
 // Toolbar buttons
 ['bold', 'italic', 'underline', 'strike'].forEach(id => {
@@ -2039,9 +2387,10 @@ document.addEventListener('keydown', e => {
         selectedNotes.clear();
         const offset = 30;
         
-        notesData.forEach((noteData: any) => {
+        notesData.forEach((noteData: any, index: number) => {
           const note = document.createElement('div');
           note.className = 'note';
+          note.id = `note-${currentDocId}-paste-${Date.now()}-${index}`;
           note.contentEditable = currentTool === 'default' ? 'true' : 'false';
           note.style.left = (noteData.x + offset) + 'px';
           note.style.top = (noteData.y + offset) + 'px';
@@ -2075,6 +2424,7 @@ document.addEventListener('keydown', e => {
     selectedNotes.forEach(note => note.remove());
     selectedNotes.clear();
     updateSelection();
+    updateLayersPanel(); // Update layers panel when notes are deleted
     saveCurrentDocument();
     return;
   }
@@ -2161,3 +2511,4 @@ loadSettings();
 loadDocuments();
 initHeaderAutoHide();
 updateCanvasClasses(); // Initialize tool state
+initializeLayersPanel(); // Initialize layers panel

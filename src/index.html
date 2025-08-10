@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Anywhere</title>
+<title>Anyplace</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div id="sidebar">
   <div class="sidebar-logo">
-    <span class="logo-full">Anywhere</span>
+    <span class="logo-full">Anyplace</span>
     <span class="logo-short">A</span>
   </div>
   <button class="sb-btn" id="libraryBtn">
@@ -35,6 +35,17 @@
   </button>
   <input type="text" id="searchInput" placeholder="Search notes...">
   <div id="notesList"></div>
+  <div id="layersSection" class="layers-section">
+    <div class="section-header">
+      <span>Layers</span>
+      <button id="toggleLayers" class="section-toggle">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+    </div>
+    <div id="layersList" class="layers-list"></div>
+  </div>
   <div class="sb-footer">
     <button class="sb-btn" id="settingsBtn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -61,8 +72,10 @@
 </div>
 
 <div id="canvas">
-  <div id="logo">Anywhere<div id="logo-subtext">Your ideas anywhere, anyplace</div></div>
+  <div id="logo">Anyplace<div id="logo-subtext">Your ideas anywhere, anyplace</div></div>
 </div>
+
+<canvas id="alignmentGuides"></canvas>
 
 <div id="toolbar">
   <button id="moveTool" title="Move Tool">
@@ -71,6 +84,16 @@
       <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/>
       <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/>
       <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.83L8 15"/>
+    </svg>
+  </button>
+  <button id="snapToggle" title="Toggle Alignment Guides (Alt to temporarily disable)" class="active">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="7" height="7"/>
+      <rect x="14" y="3" width="7" height="7"/>
+      <rect x="14" y="14" width="7" height="7"/>
+      <rect x="3" y="14" width="7" height="7"/>
+      <line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="2 2"/>
+      <line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="2 2"/>
     </svg>
   </button>
   <div class="sep"></div>
@@ -151,6 +174,7 @@
   </select>
 </div>
 
+<script src="../dist/alignment.js"></script>
 <script src="../dist/app.js"></script>
 </body>
 </html>

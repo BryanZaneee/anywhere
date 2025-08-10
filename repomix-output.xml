@@ -43,6 +43,7 @@ The content is organized as follows:
 .claude/
   settings.local.json
 src/
+  alignment.ts
   app.ts
   index.html
   styles.css
@@ -50,7 +51,9 @@ src/
 CLAUDE.md
 package.json
 readme.md
+SmartAlign.md
 tsconfig.json
+Update.prd
 </directory_structure>
 
 <files>
@@ -70,11 +73,1232 @@ This section contains the contents of the repository's files.
       "Bash(npm install:*)",
       "Bash(npm run dev:*)",
       "Bash(ls:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(cat:*)",
+      "Bash(npm run serve:*)",
+      "Bash(python3:*)"
     ],
     "deny": []
   }
 }
+</file>
+
+<file path="src/alignment.ts">
+// Alignment Guide System for note positioning
+// This file will be compiled separately and included in HTML
+
+declare global {
+  interface Window {
+    AlignmentCalculator: typeof AlignmentCalculator;
+    GuideRenderer: typeof GuideRenderer;
+  }
+}
+
+interface NoteBounds {
+  id: string;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
+}
+
+export interface AlignmentGuide {
+  type: 'vertical' | 'horizontal' | 'vertical-center' | 'horizontal-center';
+  position: number;
+  strength: number; // 0-1, based on proximity
+  sourceNotes: string[]; // IDs of notes causing this guide
+  color?: string;
+}
+
+export interface SnapResult {
+  snapped: boolean;
+  deltaX: number;
+  deltaY: number;
+  guides: AlignmentGuide[];
+}
+
+export interface AlignmentOptions {
+  snapThreshold: number;
+  snapEnabled: boolean;
+  showDistances: boolean;
+  guideColors: {
+    edge: string;
+    center: string;
+    spacing: string;
+  };
+}
+
+// Spatial indexing for performance
+class QuadTree {
+  private bounds: { x: number; y: number; width: number; height: number };
+  private maxObjects: number = 10;
+  private maxLevels: number = 5;
+  private level: number;
+  private objects: NoteBounds[] = [];
+  private nodes: QuadTree[] = [];
+
+  constructor(bounds: { x: number; y: number; width: number; height: number }, level = 0) {
+    this.bounds = bounds;
+    this.level = level;
+  }
+
+  clear(): void {
+    this.objects = [];
+    this.nodes = [];
+  }
+
+  split(): void {
+    const subWidth = this.bounds.width / 2;
+    const subHeight = this.bounds.height / 2;
+    const x = this.bounds.x;
+    const y = this.bounds.y;
+
+    this.nodes[0] = new QuadTree({
+      x: x + subWidth,
+      y: y,
+      width: subWidth,
+      height: subHeight
+    }, this.level + 1);
+
+    this.nodes[1] = new QuadTree({
+      x: x,
+      y: y,
+      width: subWidth,
+      height: subHeight
+    }, this.level + 1);
+
+    this.nodes[2] = new QuadTree({
+      x: x,
+      y: y + subHeight,
+      width: subWidth,
+      height: subHeight
+    }, this.level + 1);
+
+    this.nodes[3] = new QuadTree({
+      x: x + subWidth,
+      y: y + subHeight,
+      width: subWidth,
+      height: subHeight
+    }, this.level + 1);
+  }
+
+  getIndex(bounds: NoteBounds): number {
+    let index = -1;
+    const verticalMidpoint = this.bounds.x + this.bounds.width / 2;
+    const horizontalMidpoint = this.bounds.y + this.bounds.height / 2;
+
+    const topQuadrant = bounds.top < horizontalMidpoint && bounds.bottom < horizontalMidpoint;
+    const bottomQuadrant = bounds.top > horizontalMidpoint;
+
+    if (bounds.left < verticalMidpoint && bounds.right < verticalMidpoint) {
+      if (topQuadrant) index = 1;
+      else if (bottomQuadrant) index = 2;
+    } else if (bounds.left > verticalMidpoint) {
+      if (topQuadrant) index = 0;
+      else if (bottomQuadrant) index = 3;
+    }
+
+    return index;
+  }
+
+  insert(bounds: NoteBounds): void {
+    if (this.nodes.length > 0) {
+      const index = this.getIndex(bounds);
+      if (index !== -1) {
+        this.nodes[index].insert(bounds);
+        return;
+      }
+    }
+
+    this.objects.push(bounds);
+
+    if (this.objects.length > this.maxObjects && this.level < this.maxLevels) {
+      if (this.nodes.length === 0) {
+        this.split();
+      }
+
+      let i = 0;
+      while (i < this.objects.length) {
+        const index = this.getIndex(this.objects[i]);
+        if (index !== -1) {
+          this.nodes[index].insert(this.objects.splice(i, 1)[0]);
+        } else {
+          i++;
+        }
+      }
+    }
+  }
+
+  retrieve(bounds: NoteBounds): NoteBounds[] {
+    const returnObjects: NoteBounds[] = [...this.objects];
+
+    if (this.nodes.length > 0) {
+      const index = this.getIndex(bounds);
+      if (index !== -1) {
+        returnObjects.push(...this.nodes[index].retrieve(bounds));
+      } else {
+        for (const node of this.nodes) {
+          returnObjects.push(...node.retrieve(bounds));
+        }
+      }
+    }
+
+    return returnObjects;
+  }
+}
+
+class AlignmentCalculator {
+  private quadTree: QuadTree | null = null;
+  private cachedBounds: Map<string, NoteBounds> = new Map();
+  private options: AlignmentOptions;
+
+  constructor(options: Partial<AlignmentOptions> = {}) {
+    this.options = {
+      snapThreshold: 8,
+      snapEnabled: true,
+      showDistances: false,
+      guideColors: {
+        edge: 'rgba(59, 130, 246, 0.6)',    // Blue for edges
+        center: 'rgba(239, 68, 68, 0.6)',    // Red for centers
+        spacing: 'rgba(34, 197, 94, 0.6)'    // Green for spacing
+      },
+      ...options
+    };
+  }
+
+  initializeQuadTree(viewportBounds: { x: number; y: number; width: number; height: number }): void {
+    this.quadTree = new QuadTree(viewportBounds);
+  }
+
+  cacheNoteBounds(notes: HTMLDivElement[]): void {
+    this.cachedBounds.clear();
+    
+    notes.forEach(note => {
+      const id = note.id || note.dataset.noteId || Math.random().toString(36);
+      const left = parseInt(note.style.left) || 0;
+      const top = parseInt(note.style.top) || 0;
+      const width = note.offsetWidth;
+      const height = note.offsetHeight;
+      
+      const bounds: NoteBounds = {
+        id,
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+        width,
+        height,
+        centerX: left + width / 2,
+        centerY: top + height / 2
+      };
+      
+      this.cachedBounds.set(id, bounds);
+      this.quadTree?.insert(bounds);
+    });
+  }
+
+  calculateAlignments(
+    draggedBounds: NoteBounds,
+    excludeIds: Set<string> = new Set()
+  ): AlignmentGuide[] {
+    const guides: AlignmentGuide[] = [];
+    const threshold = this.options.snapThreshold;
+    
+    // Get nearby notes using quadtree if available
+    const nearbyNotes = this.quadTree 
+      ? this.quadTree.retrieve(draggedBounds)
+      : Array.from(this.cachedBounds.values());
+    
+    // Check each nearby note for alignments
+    nearbyNotes.forEach(targetBounds => {
+      if (excludeIds.has(targetBounds.id)) return;
+      
+      // Vertical edge alignments
+      const leftDiff = Math.abs(draggedBounds.left - targetBounds.left);
+      if (leftDiff < threshold) {
+        guides.push({
+          type: 'vertical',
+          position: targetBounds.left,
+          strength: 1 - (leftDiff / threshold),
+          sourceNotes: [targetBounds.id],
+          color: this.options.guideColors.edge
+        });
+      }
+      
+      const rightDiff = Math.abs(draggedBounds.right - targetBounds.right);
+      if (rightDiff < threshold) {
+        guides.push({
+          type: 'vertical',
+          position: targetBounds.right,
+          strength: 1 - (rightDiff / threshold),
+          sourceNotes: [targetBounds.id],
+          color: this.options.guideColors.edge
+        });
+      }
+      
+      // Vertical center alignment
+      const centerXDiff = Math.abs(draggedBounds.centerX - targetBounds.centerX);
+      if (centerXDiff < threshold) {
+        guides.push({
+          type: 'vertical-center',
+          position: targetBounds.centerX,
+          strength: 1 - (centerXDiff / threshold),
+          sourceNotes: [targetBounds.id],
+          color: this.options.guideColors.center
+        });
+      }
+      
+      // Horizontal edge alignments
+      const topDiff = Math.abs(draggedBounds.top - targetBounds.top);
+      if (topDiff < threshold) {
+        guides.push({
+          type: 'horizontal',
+          position: targetBounds.top,
+          strength: 1 - (topDiff / threshold),
+          sourceNotes: [targetBounds.id],
+          color: this.options.guideColors.edge
+        });
+      }
+      
+      const bottomDiff = Math.abs(draggedBounds.bottom - targetBounds.bottom);
+      if (bottomDiff < threshold) {
+        guides.push({
+          type: 'horizontal',
+          position: targetBounds.bottom,
+          strength: 1 - (bottomDiff / threshold),
+          sourceNotes: [targetBounds.id],
+          color: this.options.guideColors.edge
+        });
+      }
+      
+      // Horizontal center alignment
+      const centerYDiff = Math.abs(draggedBounds.centerY - targetBounds.centerY);
+      if (centerYDiff < threshold) {
+        guides.push({
+          type: 'horizontal-center',
+          position: targetBounds.centerY,
+          strength: 1 - (centerYDiff / threshold),
+          sourceNotes: [targetBounds.id],
+          color: this.options.guideColors.center
+        });
+      }
+    });
+    
+    // Merge guides at the same position
+    const mergedGuides = this.mergeGuides(guides);
+    
+    // Sort by strength (strongest first)
+    return mergedGuides.sort((a, b) => b.strength - a.strength);
+  }
+
+  private mergeGuides(guides: AlignmentGuide[]): AlignmentGuide[] {
+    const merged = new Map<string, AlignmentGuide>();
+    
+    guides.forEach(guide => {
+      const key = `${guide.type}-${guide.position}`;
+      const existing = merged.get(key);
+      
+      if (existing) {
+        existing.sourceNotes.push(...guide.sourceNotes);
+        existing.strength = Math.max(existing.strength, guide.strength);
+      } else {
+        merged.set(key, { ...guide });
+      }
+    });
+    
+    return Array.from(merged.values());
+  }
+
+  calculateSnapPosition(
+    draggedBounds: NoteBounds,
+    guides: AlignmentGuide[]
+  ): SnapResult {
+    if (!this.options.snapEnabled || guides.length === 0) {
+      return { snapped: false, deltaX: 0, deltaY: 0, guides: [] };
+    }
+    
+    let deltaX = 0;
+    let deltaY = 0;
+    const activeGuides: AlignmentGuide[] = [];
+    
+    // Find strongest vertical guide
+    const verticalGuides = guides.filter(g => 
+      g.type === 'vertical' || g.type === 'vertical-center'
+    );
+    
+    if (verticalGuides.length > 0) {
+      const strongestVertical = verticalGuides[0];
+      activeGuides.push(strongestVertical);
+      
+      if (strongestVertical.type === 'vertical') {
+        // Snap to edge
+        const currentLeft = draggedBounds.left;
+        deltaX = strongestVertical.position - currentLeft;
+      } else {
+        // Snap to center
+        const currentCenterX = draggedBounds.centerX;
+        deltaX = strongestVertical.position - currentCenterX;
+      }
+    }
+    
+    // Find strongest horizontal guide
+    const horizontalGuides = guides.filter(g => 
+      g.type === 'horizontal' || g.type === 'horizontal-center'
+    );
+    
+    if (horizontalGuides.length > 0) {
+      const strongestHorizontal = horizontalGuides[0];
+      activeGuides.push(strongestHorizontal);
+      
+      if (strongestHorizontal.type === 'horizontal') {
+        // Snap to edge
+        const currentTop = draggedBounds.top;
+        deltaY = strongestHorizontal.position - currentTop;
+      } else {
+        // Snap to center
+        const currentCenterY = draggedBounds.centerY;
+        deltaY = strongestHorizontal.position - currentCenterY;
+      }
+    }
+    
+    return {
+      snapped: activeGuides.length > 0,
+      deltaX,
+      deltaY,
+      guides: activeGuides
+    };
+  }
+
+  clearCache(): void {
+    this.cachedBounds.clear();
+    this.quadTree?.clear();
+  }
+
+  updateOptions(options: Partial<AlignmentOptions>): void {
+    this.options = { ...this.options, ...options };
+  }
+}
+
+class GuideRenderer {
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private animationFrame: number | null = null;
+  private activeGuides: AlignmentGuide[] = [];
+  private fadeTimeout: number | null = null;
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not get 2D context');
+    this.ctx = ctx;
+    
+    this.resizeCanvas();
+    window.addEventListener('resize', () => this.resizeCanvas());
+  }
+
+  private resizeCanvas(): void {
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
+  }
+
+  renderGuides(guides: AlignmentGuide[], immediate = false): void {
+    this.activeGuides = guides;
+    
+    if (this.fadeTimeout) {
+      clearTimeout(this.fadeTimeout);
+      this.fadeTimeout = null;
+    }
+    
+    if (immediate) {
+      this.draw();
+    } else {
+      this.scheduleAnimation();
+    }
+  }
+
+  private scheduleAnimation(): void {
+    if (this.animationFrame) {
+      cancelAnimationFrame(this.animationFrame);
+    }
+    
+    this.animationFrame = requestAnimationFrame(() => {
+      this.draw();
+      this.animationFrame = null;
+    });
+  }
+
+  private draw(): void {
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    this.activeGuides.forEach(guide => {
+      this.ctx.save();
+      
+      // Set line style based on guide strength
+      this.ctx.strokeStyle = guide.color || 'rgba(59, 130, 246, 0.6)';
+      this.ctx.lineWidth = Math.max(1, guide.strength * 2);
+      
+      // Draw dashed line for center guides
+      if (guide.type.includes('center')) {
+        this.ctx.setLineDash([5, 5]);
+      } else {
+        this.ctx.setLineDash([]);
+      }
+      
+      this.ctx.beginPath();
+      
+      if (guide.type === 'vertical' || guide.type === 'vertical-center') {
+        this.ctx.moveTo(guide.position, 0);
+        this.ctx.lineTo(guide.position, this.canvas.height);
+      } else {
+        this.ctx.moveTo(0, guide.position);
+        this.ctx.lineTo(this.canvas.width, guide.position);
+      }
+      
+      this.ctx.stroke();
+      this.ctx.restore();
+    });
+  }
+
+  clear(fadeOut = false): void {
+    if (fadeOut) {
+      // Implement fade out animation
+      this.fadeTimeout = window.setTimeout(() => {
+        this.activeGuides = [];
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.fadeTimeout = null;
+      }, 150);
+    } else {
+      this.activeGuides = [];
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+    
+    if (this.animationFrame) {
+      cancelAnimationFrame(this.animationFrame);
+      this.animationFrame = null;
+    }
+  }
+
+  destroy(): void {
+    this.clear();
+    window.removeEventListener('resize', () => this.resizeCanvas());
+  }
+}
+
+// Make classes available globally for app.js
+window.AlignmentCalculator = AlignmentCalculator;
+window.GuideRenderer = GuideRenderer;
+</file>
+
+<file path="SmartAlign.md">
+# Smart Align - Implementation Documentation
+
+## Overview
+
+Smart Align is a Photoshop/Figma-style alignment guide system for the Anywhere note-taking application. It provides visual guides and snap-to-align functionality when moving notes, helping users position content precisely with professional-grade alignment assistance.
+
+## Architecture
+
+### Core Components
+
+The Smart Align system consists of three main components:
+
+1. **AlignmentCalculator** - Core logic for calculating alignment guides and snap positions
+2. **GuideRenderer** - Canvas-based visual rendering of alignment guides
+3. **QuadTree** - Spatial indexing for performance optimization
+
+### File Structure
+
+```
+src/
+├── alignment.ts          # TypeScript source (excluded from compilation)
+├── app.ts               # Integration with main application
+└── styles.css           # Visual styling for guides and feedback
+
+dist/
+└── alignment.js         # Hand-optimized JavaScript (global script)
+```
+
+## Code Flow
+
+### 1. Initialization
+
+```typescript
+// System initializes when app loads
+guidesCanvas = document.getElementById('alignmentGuides');
+alignmentCalculator = new AlignmentCalculator({
+  snapThreshold: 8,
+  snapEnabled: true,
+  guideColors: {
+    edge: 'rgba(59, 130, 246, 0.6)',    // Blue for edges
+    center: 'rgba(239, 68, 68, 0.6)',   // Red for centers
+    spacing: 'rgba(34, 197, 94, 0.6)'   // Green for spacing
+  }
+});
+guideRenderer = new GuideRenderer(guidesCanvas);
+```
+
+### 2. Drag Detection
+
+When user enters move mode and starts dragging:
+
+```typescript
+// Move tool activation
+currentTool = 'move' → note selection → drag start
+
+// Individual note drag
+isDraggingNote = true
+draggedNote = selectedNote
+
+// Group drag (multiple notes)
+isDraggingGroup = true
+```
+
+### 3. Bounds Calculation
+
+The system calculates alignment based on selection box boundaries (not individual note elements):
+
+```typescript
+// Calculate selection box bounds
+let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+selectedNotes.forEach(note => {
+  const x = parseInt(note.style.left) + dx;
+  const y = parseInt(note.style.top) + dy;
+  const w = note.offsetWidth;
+  const h = note.offsetHeight;
+  minX = Math.min(minX, x);
+  minY = Math.min(minY, y);
+  maxX = Math.max(maxX, x + w);
+  maxY = Math.max(maxY, y + h);
+});
+
+const draggedBounds = {
+  left: minX,
+  top: minY,
+  right: maxX,
+  bottom: maxY,
+  width: maxX - minX,
+  height: maxY - minY,
+  centerX: (minX + maxX) / 2,
+  centerY: (minY + maxY) / 2
+};
+```
+
+### 4. Spatial Indexing
+
+The QuadTree provides efficient collision detection for large numbers of notes:
+
+```typescript
+// Initialize spatial index
+alignmentCalculator.initializeQuadTree({
+  x: 0, y: 0,
+  width: window.innerWidth * 2,
+  height: window.innerHeight * 2
+});
+
+// Cache note positions
+alignmentCalculator.cacheNoteBounds(allNotes);
+
+// Efficient retrieval of nearby notes
+const nearbyNotes = this.quadTree.retrieve(draggedBounds);
+```
+
+### 5. Alignment Calculation
+
+The system calculates various types of alignments:
+
+```typescript
+calculateAlignments(draggedBounds, excludeIds) {
+  // Edge alignments (left, right, top, bottom)
+  const leftDiff = Math.abs(draggedBounds.left - targetBounds.left);
+  if (leftDiff < threshold) {
+    guides.push({
+      type: 'vertical',
+      position: targetBounds.left,
+      strength: 1 - (leftDiff / threshold),
+      color: this.options.guideColors.edge
+    });
+  }
+  
+  // Center alignments
+  const centerXDiff = Math.abs(draggedBounds.centerX - targetBounds.centerX);
+  if (centerXDiff < threshold) {
+    guides.push({
+      type: 'vertical-center',
+      position: targetBounds.centerX,
+      strength: 1 - (centerXDiff / threshold),
+      color: this.options.guideColors.center
+    });
+  }
+}
+```
+
+### 6. Snap Position Calculation
+
+```typescript
+calculateSnapPosition(draggedBounds, guides) {
+  // Find strongest alignments
+  const verticalGuides = guides.filter(g => 
+    g.type === 'vertical' || g.type === 'vertical-center'
+  );
+  const horizontalGuides = guides.filter(g => 
+    g.type === 'horizontal' || g.type === 'horizontal-center'
+  );
+  
+  // Calculate snap deltas
+  let deltaX = 0, deltaY = 0;
+  if (verticalGuides.length > 0) {
+    const strongest = verticalGuides[0];
+    deltaX = strongest.position - draggedBounds.centerX;
+  }
+  
+  return { snapped: true, deltaX, deltaY, guides };
+}
+```
+
+### 7. Visual Rendering
+
+The GuideRenderer draws guides on a dedicated canvas layer:
+
+```typescript
+drawGuidesInternal() {
+  this.activeGuides.forEach(guide => {
+    // Enhanced visual styling
+    this.ctx.strokeStyle = guide.color;
+    this.ctx.lineWidth = Math.max(2, guide.strength * 3);
+    this.ctx.lineCap = 'round';
+    
+    // Shadow for contrast
+    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+    this.ctx.shadowBlur = 1;
+    
+    // Dashed lines for center guides
+    if (guide.type.includes('center')) {
+      this.ctx.setLineDash([8, 4]);
+    }
+    
+    // Draw guide line
+    if (guide.type.startsWith('vertical')) {
+      this.ctx.moveTo(guide.position, 0);
+      this.ctx.lineTo(guide.position, this.canvas.height);
+    } else {
+      this.ctx.moveTo(0, guide.position);
+      this.ctx.lineTo(this.canvas.width, guide.position);
+    }
+    this.ctx.stroke();
+    
+    // Strong alignment indicators
+    if (guide.strength > 0.8) {
+      // Draw small circles at edges
+    }
+  });
+}
+```
+
+## Performance Optimizations
+
+### 1. Debouncing
+```typescript
+const alignmentDebounceDelay = 16; // ~60fps
+const shouldCalculateAlignment = (currentTime - lastAlignmentTime) >= alignmentDebounceDelay;
+```
+
+### 2. Spatial Indexing
+- QuadTree reduces O(n²) to O(log n) for collision detection
+- Only checks nearby notes instead of all notes
+
+### 3. Early Exit Optimizations
+```typescript
+if (this.cachedBounds.size === 0) return guides;
+if (nearbyNotes.length === 0) return guides;
+```
+
+### 4. Cache Optimization
+```typescript
+// Skip rebuild if notes haven't changed
+if (this.cachedBounds.size === notes.length) {
+  let hasChanged = false;
+  notes.forEach(note => {
+    if (!this.cachedBounds.has(note.id)) hasChanged = true;
+  });
+  if (!hasChanged) return;
+}
+```
+
+## Visual Feedback System
+
+### 1. Guide Animations
+- **Fade In**: 150ms smooth opacity transition when guides appear
+- **Fade Out**: 200ms smooth opacity transition when guides disappear
+- **Strength-based Styling**: Line thickness based on alignment strength
+
+### 2. Snap Feedback
+```css
+#alignmentGuides.snap-active {
+  filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
+}
+```
+
+### 3. Alt Key Override
+```css
+#alignmentGuides.snap-disabled {
+  opacity: 0.3;
+  filter: grayscale(100%);
+}
+```
+
+### 4. Cursor Feedback
+```css
+#canvas.move-mode.snap-disabled {
+  cursor: not-allowed !important;
+}
+```
+
+## Integration Points
+
+### 1. Move Tool Integration
+- Activates only when `currentTool === 'move'`
+- Works with both individual and group note selection
+- Integrates with existing resize handles system
+
+### 2. Event Handling
+```typescript
+document.addEventListener('mousemove', e => {
+  if (isDraggingNote || isDraggingGroup) {
+    // Alignment calculations here
+  }
+});
+```
+
+### 3. Canvas Coordinate System
+- Alignment canvas: `position: fixed` overlay
+- Note coordinates: `style.left/top` absolute positioning
+- Selection boxes: calculated from note bounds
+
+## Configuration
+
+### Default Settings
+```typescript
+const options = {
+  snapThreshold: 8,        // 8px proximity for snapping
+  snapEnabled: true,       // Enable snapping by default
+  showDistances: false,    // Future: show distance measurements
+  guideColors: {
+    edge: 'rgba(59, 130, 246, 0.6)',     // Blue
+    center: 'rgba(239, 68, 68, 0.6)',    // Red
+    spacing: 'rgba(34, 197, 94, 0.6)'    // Green
+  }
+};
+```
+
+### User Controls
+- **Snap Toggle Button**: Enable/disable alignment system
+- **Alt Key**: Temporarily disable snapping during drag
+- **Visual Indicators**: Show snap status in UI
+
+## Debugging
+
+The system includes comprehensive debugging:
+
+```typescript
+console.log('Smart Align Debug - System initialized successfully');
+console.log('Smart Align Debug - Found', guides.length, 'alignment guides');
+console.log('Smart Align Debug - SNAPPED! Delta:', deltaX, deltaY);
+console.log('Smart Align Debug - Performance:', (alignEnd - alignStart).toFixed(2), 'ms');
+```
+
+## Future Enhancements
+
+1. **Distance Measurements**: Show pixel distances between aligned elements
+2. **Grid Snapping**: Align to invisible grid overlay
+3. **Smart Layout Suggestions**: AI-powered layout recommendations
+4. **Multi-directional Guides**: Diagonal alignment guides
+5. **Magnetic Snapping**: Stronger attraction as elements get closer
+
+## Performance Targets
+
+- **60fps**: Maintain smooth animation during drag operations
+- **<2ms**: Alignment calculation time for typical scenarios
+- **<100 notes**: Optimal performance threshold
+- **16ms**: Debounce interval for 60fps target
+
+## Browser Compatibility
+
+- **Canvas API**: All modern browsers
+- **Performance API**: All modern browsers
+- **RequestAnimationFrame**: All modern browsers
+- **CSS Transforms**: All modern browsers
+
+---
+
+*This implementation provides professional-grade alignment capabilities matching industry-standard design tools while maintaining high performance and smooth user experience.*
+</file>
+
+<file path=".gitignore">
+node_modules/
+dist/
+*.log
+.DS_Store
+</file>
+
+<file path="package.json">
+{
+  "name": "anywhere",
+  "version": "1.0.0",
+  "description": "A freeform note-taking application with TypeScript",
+  "main": "src/app.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "serve": "python -m http.server 8080",
+    "dev-server": "live-server src --port=3000 --wait=500",
+    "dev": "concurrently \"npm run watch\" \"live-server --port=3000 --wait=500 --open=src/index.html\""
+  },
+  "keywords": [
+    "notes",
+    "typescript",
+    "canvas",
+    "note-taking"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "live-server": "^1.2.2",
+    "typescript": "^5.3.0"
+  }
+}
+</file>
+
+<file path="readme.md">
+# Anyplace - Freeform Note Taking
+
+A freeform note-taking application that provides an infinite canvas where you can click anywhere to create text notes with rich formatting options.
+
+## Features
+
+- **Infinite Canvas**: Click anywhere to create a note
+- **Rich Text Formatting**: Bold, italic, underline, strikethrough, font size/family, alignment
+- **Multi-selection**: Select multiple notes for group operations
+- **Document Management**: Multiple documents with search, pinning, and organization
+- **Undo/Redo Support**: Full undo/redo history for all operations
+- **Copy/Paste**: Copy and paste notes within and between documents
+- **Theme System**: Light/dark mode toggle
+- **Auto-save**: All changes saved automatically to localStorage
+
+## Keyboard Shortcuts
+
+### Selection & Navigation
+- **Escape** - Clear current selection
+- **Ctrl/Cmd + A** - Select all notes
+- **Delete/Backspace** - Delete selected notes
+- **Arrow Keys** - Move selected notes (1px increments)
+- **Shift + Arrow Keys** - Move selected notes (10px increments)
+
+### Document Management
+- **Ctrl/Cmd + N** - Create new document
+- **Ctrl/Cmd + S** - Force save current document
+
+### Editing & Formatting
+- **Ctrl/Cmd + Z** - Undo last action
+- **Ctrl/Cmd + Shift + Z** - Redo last action
+- **Ctrl/Cmd + C** - Copy selected notes
+- **Ctrl/Cmd + V** - Paste copied notes
+- **Ctrl/Cmd + D** - Duplicate selected notes
+
+#### Text Formatting (selected notes or active note)
+- **Ctrl/Cmd + B** - Toggle bold
+- **Ctrl/Cmd + I** - Toggle italic  
+- **Ctrl/Cmd + U** - Toggle underline
+- **Ctrl/Cmd + E** - Center align text
+- **Ctrl/Cmd + L** - Left align text
+- **Ctrl/Cmd + R** - Right align text
+
+#### Font Size (selected notes only)
+- **Ctrl/Cmd + Plus/=** - Increase font size
+- **Ctrl/Cmd + Minus** - Decrease font size
+
+## Usage
+
+1. **Creating Notes**: Click anywhere on the canvas to create a new note
+2. **Selecting Notes**: 
+   - Click and drag to select multiple notes with selection box
+   - Shift+click to add notes to selection
+   - Click on individual notes to select them
+3. **Formatting**: Use the toolbar or keyboard shortcuts to format text
+4. **Moving Notes**: Drag individual notes or use arrow keys for precise positioning
+5. **Documents**: Use the sidebar to manage multiple documents, search, and organize
+
+## Development
+
+This is a pure client-side application built with vanilla HTML, CSS, and JavaScript.
+
+**Development**: Open `src/index.html` directly in a browser or use a local server  
+**No Build Process**: No dependencies or build tools required
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "none",
+    "lib": ["DOM", "DOM.Iterable", "ES2020"],
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": false,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "sourceMap": true,
+    "removeComments": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/alignment.ts"
+  ]
+}
+</file>
+
+<file path="Update.prd">
+Product Requirements Document (PRD)
+Anywhere App - Feature Enhancement
+Executive Summary
+This PRD outlines three major feature enhancements for the Anywhere note-taking application:
+
+Hand Tool for canvas navigation
+Smart alignment guides with snapping
+Media embedding support (images and GIFs)
+These features will significantly improve the user experience by providing better canvas navigation, precise note positioning, and richer content creation capabilities.
+
+Feature 1: Hand Tool for Canvas Navigation
+Overview
+Implement a hand tool that allows users to pan and navigate the canvas by clicking and dragging, similar to design tools like Photoshop or Figma.
+
+User Stories
+As a user, I want to quickly pan around my canvas to view different areas of my notes
+As a user, I want to use the V hotkey to quickly switch to the hand tool
+As a user, I want visual feedback when the hand tool is active
+Functional Requirements
+Tool Activation
+Hotkey: Press 'V' to toggle hand tool mode
+Visual indicator in toolbar showing hand tool is active
+Cursor changes to grabbing hand icon when active
+Spacebar temporary activation (hold spacebar for temporary hand tool)
+Canvas Panning
+Click and drag to pan the canvas view
+Smooth scrolling/panning animation
+Momentum-based scrolling (optional: canvas continues moving slightly after release)
+Works with both mouse and trackpad
+Tool States
+Default state: Crosshair cursor (current behavior)
+Hand tool inactive: Open hand cursor
+Hand tool dragging: Closed/grabbing hand cursor
+Integration Requirements
+Disable note creation when hand tool is active
+Disable text selection when panning
+Allow quick toggle between hand tool and selection modes
+Remember last tool state when switching documents
+Technical Considerations
+Store canvas offset position (x, y translation)
+Update all note positions relative to canvas offset
+Ensure performant rendering during pan operations
+Handle boundary conditions (limit panning range if needed)
+Feature 2: Smart Alignment Guides & Snapping
+Overview
+Implement intelligent alignment guides that appear when moving notes, helping users align content precisely with visual guides and optional snapping.
+
+User Stories
+As a user, I want to see alignment guides when positioning notes
+As a user, I want my notes to snap to alignment points for perfect positioning
+As a user, I want to align multiple notes easily
+Functional Requirements
+Alignment Guide Display
+Show vertical guides when note edges/centers align with other notes
+Show horizontal guides when note edges/centers align with other notes
+Display measurements/distances between notes (optional)
+Color-coded guides (e.g., red for center alignment, blue for edge alignment)
+Snapping Behavior
+Snap threshold: 8-10 pixels proximity
+Snap to note edges (top, bottom, left, right)
+Snap to note centers (vertical and horizontal)
+Snap to equal spacing between notes
+Toggle snapping on/off (Alt/Option key to temporarily disable)
+Guide Types
+Edge alignment guides
+Center alignment guides
+Equal spacing guides
+Canvas center guides
+Grid snapping (optional future enhancement)
+Performance Requirements
+Calculate alignments only for visible notes
+Debounce alignment calculations during rapid movement
+Smooth guide appearance/disappearance animations
+Maximum 60fps during drag operations
+Technical Considerations
+Efficient collision detection algorithm
+R-tree or spatial indexing for large numbers of notes
+Canvas layer for rendering guides (separate from notes)
+Store note bounding boxes for quick calculations
+Feature 3: Media Embedding (Images & GIFs)
+Overview
+Enable users to embed images and GIFs directly into the canvas, treating them as first-class objects alongside text notes.
+
+User Stories
+As a user, I want to paste images from my clipboard onto the canvas
+As a user, I want to drag and drop image files onto the canvas
+As a user, I want to resize and position embedded media
+As a user, I want to embed GIFs that play automatically
+Functional Requirements
+Media Input Methods
+Paste from clipboard (Ctrl/Cmd+V)
+Drag and drop files from file system
+URL input for remote images/GIFs
+Upload button in toolbar
+Support formats: JPEG, PNG, GIF, WebP, SVG
+Media Object Behavior
+Positioned absolutely like notes
+Resizable with corner/edge handles
+Maintain aspect ratio by default (Shift to free transform)
+Selectable and movable like notes
+Can be part of multi-selection
+Delete with Delete/Backspace keys
+Media Display Options
+Set maximum initial size (e.g., 500px max dimension)
+Border/shadow styling options
+Opacity adjustment
+Click to view full size (lightbox mode)
+GIF playback controls (play/pause on hover)
+Storage & Performance
+Convert images to base64 for localStorage
+Implement size limits (e.g., 5MB per image)
+Lazy loading for performance
+Thumbnail generation for large images
+Compress images before storage
+Technical Considerations
+FileReader API for local file handling
+Canvas or Image element rendering
+Base64 encoding/decoding for persistence
+Image optimization library integration
+Consider IndexedDB for larger storage needs
+Implementation Plan: 3-Agent Approach
+Agent 1: Hand Tool Implementation
+Scope: Canvas navigation and hand tool functionality
+
+Tasks:
+
+Create hand tool button in toolbar UI
+Implement V hotkey and spacebar activation
+Add canvas translation state management
+Implement click-and-drag panning logic
+Update cursor states and visual feedback
+Adjust note rendering for canvas offset
+Add momentum scrolling (optional)
+Test with existing selection/creation features
+Dependencies: None (can work independently)
+
+Estimated Complexity: Medium
+
+Key Files to Modify:
+
+app.ts: Add hand tool state, pan logic, hotkey handling
+styles.css: Add hand tool cursor styles
+index.html: Add hand tool button to toolbar
+Agent 2: Alignment System Implementation
+Scope: Smart guides and snapping functionality
+
+Tasks:
+
+Create alignment calculation engine
+Implement guide rendering layer
+Add snap detection during drag operations
+Create guide line visual components
+Implement different guide types (edge, center)
+Add settings for snap threshold
+Optimize performance for many notes
+Add hotkey for toggling snapping
+Dependencies: Should coordinate with Agent 1 for canvas offset calculations
+
+Estimated Complexity: High
+
+Key Files to Modify:
+
+app.ts: Add alignment logic, guide rendering, snap calculations
+styles.css: Add guide line styles
+New file: alignment.ts for alignment engine
+Agent 3: Media Embedding Implementation
+Scope: Image and GIF support
+
+Tasks:
+
+Implement drag-and-drop handling
+Add clipboard paste for images
+Create media note type/class
+Implement resize handles UI
+Add base64 conversion and storage
+Implement GIF playback controls
+Add media toolbar buttons
+Create lightbox view component
+Handle storage limits and compression
+Dependencies: Needs to integrate with selection system from base code
+
+Estimated Complexity: High
+
+Key Files to Modify:
+
+app.ts: Add media handling, new note types
+styles.css: Add media element styles
+index.html: Add media upload UI elements
+New file: media.ts for media-specific logic
+Testing Requirements
+Hand Tool Testing
+Verify V hotkey activation
+Test spacebar temporary activation
+Ensure smooth panning performance
+Test interaction with note selection
+Verify cursor state changes
+Test on touch devices
+Alignment Testing
+Test guide appearance at correct positions
+Verify snapping at threshold distance
+Test with multiple notes
+Performance test with 100+ notes
+Test disable snapping with modifier key
+Verify guide cleanup after movement
+Media Testing
+Test all input methods (paste, drag, upload)
+Verify format support
+Test size limits and compression
+Verify GIF playback
+Test resize with aspect ratio
+Test localStorage limits
+Verify selection and deletion
+Success Metrics
+Canvas navigation time reduced by 40%
+Note alignment precision improved (< 5px variance)
+User engagement with media features (>30% adoption)
+Performance maintained (60fps during all operations)
+No increase in storage errors
+Feature discovery rate >50% within first week
+Future Enhancements
+Grid snapping system
+Rulers and measurements
+Video embedding support
+Cloud storage for media
+Collaborative cursor tracking
+Canvas zoom functionality
+Smart layout suggestions
+Audio note support
 </file>
 
 <file path="src/app.ts">
@@ -138,14 +1362,29 @@ interface DocumentHistoryState {
 
 type ThemeMode = 'light' | 'dark';
 type Platform = 'mac' | 'windows';
+type ToolMode = 'default' | 'move';
 type FontSize = '12px' | '14px' | '16px' | '18px' | '20px' | '24px' | '28px' | '32px' | '48px';
 type FontFamily = 
   | "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-  | "Georgia,'Times New Roman',serif"
-  | "'Courier New',Consolas,monospace"
   | "Arial,Helvetica,sans-serif"
+  | "'Helvetica Neue',Helvetica,sans-serif"
+  | "Verdana,Geneva,sans-serif"
+  | "'Trebuchet MS',sans-serif"
+  | "'Lucida Sans',sans-serif"
+  | "Tahoma,Geneva,sans-serif"
+  | "'Segoe UI',Tahoma,Geneva,sans-serif"
+  | "Georgia,'Times New Roman',serif"
   | "'Times New Roman',Times,serif"
-  | "Verdana,Geneva,sans-serif";
+  | "'Book Antiqua',Palatino,serif"
+  | "Garamond,serif"
+  | "'Courier New',Courier,monospace"
+  | "Monaco,'Lucida Console',monospace"
+  | "Consolas,'Liberation Mono',monospace"
+  | "'Fira Code',monospace"
+  | "Impact,'Arial Black',sans-serif"
+  | "'Comic Sans MS',cursive"
+  | "Papyrus,fantasy"
+  | "'Brush Script MT',cursive";
 
 interface DocumentsStorage {
   [id: string]: AppDocument;
@@ -172,7 +1411,27 @@ let headerIdleTimer: number | null = null;
 let headerIdleTimeout: number = 10000; // 10 seconds default
 let headerCanHide: boolean = true;
 let isToolbarHovered: boolean = false;
-let shouldShowToolbarOnHover: boolean = false;
+let shouldShowToolbarOnHover: boolean = true;
+
+// Tool system state
+let currentTool: ToolMode = 'default';
+let isDraggingNote: boolean = false;
+let draggedNote: HTMLDivElement | null = null;
+let resizeHandles: HTMLDivElement[] = [];
+let isResizing: boolean = false;
+let resizeHandle: HTMLDivElement | null = null;
+let resizeStartSize: number = 16; // Initial font size
+
+// Alignment system state
+let alignmentCalculator: any | null = null;
+let guideRenderer: any | null = null;
+let guidesCanvas: HTMLCanvasElement | null = null;
+let snapEnabled: boolean = true;
+let snapThreshold: number = 8;
+let activeGuides: any[] = [];
+let lastAlignmentTime: number = 0;
+let alignmentDebounceDelay: number = 16; // ~60fps (16ms between frames)
+let dragStartPositions: Map<HTMLDivElement, { x: number, y: number }> = new Map();
 
 // Utility functions
 function focusCurrentNoteIfSingle(): void {
@@ -217,6 +1476,104 @@ function updateUI(): void {
   updateToolbar();
 }
 
+
+// Tool management functions
+function setToolMode(mode: ToolMode): void {
+  currentTool = mode;
+  updateCanvasClasses();
+  updateToolbarActiveStates();
+}
+
+function toggleMoveTool(): void {
+  const newTool = currentTool === 'move' ? 'default' : 'move';
+  console.log('Smart Align Debug - Tool changed from', currentTool, 'to', newTool);
+  setToolMode(newTool);
+}
+
+
+function updateCanvasClasses(): void {
+  canvas.classList.toggle('move-mode', currentTool === 'move');
+  
+  // Update note contentEditable based on tool mode
+  canvas.querySelectorAll<HTMLDivElement>('.note').forEach(note => {
+    note.contentEditable = currentTool === 'default' ? 'true' : 'false';
+  });
+  
+  // Clear resize handles when switching away from move mode
+  if (currentTool !== 'move') {
+    clearResizeHandles();
+  }
+}
+
+function updateToolbarActiveStates(): void {
+  const moveToolBtn = $('moveTool') as HTMLButtonElement;
+  const snapToggleBtn = $('snapToggle') as HTMLButtonElement;
+  
+  moveToolBtn.classList.toggle('active', currentTool === 'move');
+  snapToggleBtn.classList.toggle('active', snapEnabled);
+}
+
+// Resize handles management
+function clearResizeHandles(): void {
+  resizeHandles.forEach(handle => handle.remove());
+  resizeHandles = [];
+}
+
+function createResizeHandles(notes: Set<HTMLDivElement>): void {
+  clearResizeHandles();
+  
+  if (notes.size === 0 || currentTool !== 'move') return;
+  
+  // Calculate bounding box for all selected notes
+  let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+  notes.forEach(note => {
+    const x = parseInt(note.style.left);
+    const y = parseInt(note.style.top);
+    const w = note.offsetWidth;
+    const h = note.offsetHeight;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + w);
+    maxY = Math.max(maxY, y + h);
+  });
+  
+  // Create 8 resize handles
+  const handlePositions = [
+    { class: 'corner-nw', x: minX - 4, y: minY - 4 },
+    { class: 'edge-n', x: (minX + maxX) / 2 - 4, y: minY - 4 },
+    { class: 'corner-ne', x: maxX - 4, y: minY - 4 },
+    { class: 'edge-e', x: maxX - 4, y: (minY + maxY) / 2 - 4 },
+    { class: 'corner-se', x: maxX - 4, y: maxY - 4 },
+    { class: 'edge-s', x: (minX + maxX) / 2 - 4, y: maxY - 4 },
+    { class: 'corner-sw', x: minX - 4, y: maxY - 4 },
+    { class: 'edge-w', x: minX - 4, y: (minY + maxY) / 2 - 4 }
+  ];
+  
+  handlePositions.forEach(pos => {
+    const handle = document.createElement('div');
+    handle.className = `resize-handle ${pos.class}`;
+    handle.style.left = pos.x + 'px';
+    handle.style.top = pos.y + 'px';
+    
+    handle.onmousedown = e => {
+      e.stopPropagation();
+      isResizing = true;
+      resizeHandle = handle;
+      startX = e.clientX;
+      startY = e.clientY;
+      
+      // Get initial font size from first selected note
+      const firstNote = Array.from(selectedNotes)[0];
+      if (firstNote && (firstNote as any).__noteData) {
+        resizeStartSize = parseInt((firstNote as any).__noteData.styles.fontSize) || 16;
+      }
+    };
+    
+    canvas.appendChild(handle);
+    resizeHandles.push(handle);
+  });
+}
+
 function applyStylesAndUpdate(element: HTMLDivElement, styles: NoteStyles): void {
   applyStyles(element, styles);
   updateStyles();
@@ -254,6 +1611,84 @@ const sidebar = $('sidebar') as HTMLDivElement;
 const notesList = $('notesList') as HTMLDivElement;
 const searchInput = $('searchInput') as HTMLInputElement;
 const themeText = $('themeText') as HTMLSpanElement;
+
+// Initialize alignment system
+guidesCanvas = $('alignmentGuides') as HTMLCanvasElement;
+console.log('Smart Align Debug - Canvas found:', !!guidesCanvas);
+console.log('Smart Align Debug - AlignmentCalculator available:', !!(window as any).AlignmentCalculator);
+console.log('Smart Align Debug - GuideRenderer available:', !!(window as any).GuideRenderer);
+
+// Helper function to ensure we have test notes for alignment
+function ensureTestNotes(): void {
+  const existingNotes = canvas.querySelectorAll<HTMLDivElement>('.note');
+  console.log('Smart Align Debug - Existing notes:', existingNotes.length);
+  
+  // Create test notes if we have fewer than 2
+  if (existingNotes.length < 2) {
+    const positions = [
+      { x: 100, y: 100, text: 'Test Note 1' },
+      { x: 300, y: 100, text: 'Test Note 2' },
+      { x: 200, y: 250, text: 'Test Note 3' }
+    ];
+    
+    positions.slice(existingNotes.length).forEach((pos, index) => {
+      const note = document.createElement('div');
+      note.className = 'note';
+      note.id = `test-note-${existingNotes.length + index}`;
+      note.contentEditable = currentTool === 'default' ? 'true' : 'false';
+      note.style.left = pos.x + 'px';
+      note.style.top = pos.y + 'px';
+      note.innerHTML = `<p>${pos.text}</p>`;
+      
+      const noteObj: NoteObject = {
+        el: note,
+        styles: {
+          bold: false,
+          italic: false,
+          underline: false,
+          strike: false,
+          fontSize: '16px',
+          fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+          align: 'left',
+          listType: 'none'
+        }
+      };
+      
+      canvas.appendChild(note);
+      setupNote(note, noteObj);
+      console.log('Smart Align Debug - Created test note:', pos.text, 'at', pos.x, pos.y);
+    });
+    
+    saveCurrentDocument();
+  }
+}
+
+if (guidesCanvas && (window as any).AlignmentCalculator) {
+  alignmentCalculator = new (window as any).AlignmentCalculator({
+    snapThreshold,
+    snapEnabled,
+    showDistances: false,
+    guideColors: {
+      edge: 'rgba(59, 130, 246, 0.6)',
+      center: 'rgba(239, 68, 68, 0.6)',
+      spacing: 'rgba(34, 197, 94, 0.6)'
+    }
+  });
+  guideRenderer = new (window as any).GuideRenderer(guidesCanvas);
+  console.log('Smart Align Debug - System initialized successfully');
+  console.log('Smart Align Debug - Canvas size:', guidesCanvas.width, 'x', guidesCanvas.height);
+  
+  // Ensure we have test notes for alignment
+  setTimeout(() => {
+    ensureTestNotes();
+  }, 500);
+} else {
+  console.warn('Smart Align Debug - Failed to initialize:', {
+    canvas: !!guidesCanvas,
+    calculator: !!(window as any).AlignmentCalculator,
+    renderer: !!(window as any).GuideRenderer
+  });
+}
 
 // Create toolbar hover zone
 const toolbarHoverZone = document.createElement('div');
@@ -529,9 +1964,17 @@ function initHeaderAutoHide(): void {
   
   // Add hover zone detection to show toolbar when cursor is at top
   toolbarHoverZone.addEventListener('mouseenter', () => {
-    // Only show toolbar if hover zone is active and there's content that could use formatting
-    if (shouldShowToolbarOnHover && (hasTyped || selectedNotes.size > 0 || currentNote)) {
+    // Show toolbar when hovering at top - always show for tool access
+    if (shouldShowToolbarOnHover) {
       showToolbar();
+    }
+  });
+  
+  // Add mouseleave to restart auto-hide timer when leaving hover zone
+  toolbarHoverZone.addEventListener('mouseleave', () => {
+    // Restart timer when mouse leaves hover zone (if not over toolbar)
+    if (!isToolbarHovered) {
+      resetHeaderTimer();
     }
   });
   
@@ -593,10 +2036,11 @@ function loadDocument(id: string): void {
     hasTyped = true;
   }
   
-  doc.notes.forEach(noteData => {
+  doc.notes.forEach((noteData, index) => {
     const note = document.createElement('div');
     note.className = 'note';
-    note.contentEditable = 'true';
+    note.id = `note-${currentDocId}-${index}`;
+    note.contentEditable = currentTool === 'default' ? 'true' : 'false';
     note.style.left = noteData.x + 'px';
     note.style.top = noteData.y + 'px';
     note.style.textAlign = noteData.styles.align || 'left';
@@ -613,6 +2057,7 @@ function loadDocument(id: string): void {
   });
   
   updateNotesList();
+  updateCanvasClasses(); // Ensure notes respect current tool mode
 }
 
 function saveCurrentDocument(): void {
@@ -1068,7 +2513,50 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
       isOverTextContent = e.target !== note;
     }
     
-    // If clicking over text content, allow natural text selection
+    // In move mode, always select the note for moving and enable dragging
+    if (currentTool === 'move') {
+      console.log('Smart Align Debug - Move mode note click detected');
+      if (!e.shiftKey) selectedNotes.clear();
+      selectedNotes.add(note);
+      updateSelection();
+      
+      // Enable dragging
+      isDraggingNote = true;
+      draggedNote = note;
+      startX = e.clientX;
+      console.log('Smart Align Debug - Individual note drag started');
+      startY = e.clientY;
+      
+      // Initialize alignment system for drag
+      if (alignmentCalculator && guideRenderer) {
+        // Cache all notes positions (use individual bounds for non-selected notes)
+        const allNotes = Array.from(canvas.querySelectorAll<HTMLDivElement>('.note'));
+        console.log('Smart Align Debug - Caching bounds for', allNotes.length, 'notes');
+        alignmentCalculator.cacheNoteBounds(allNotes);
+        
+        // Store initial positions of selected notes
+        dragStartPositions.clear();
+        selectedNotes.forEach(n => {
+          dragStartPositions.set(n, {
+            x: parseInt(n.style.left) || 0,
+            y: parseInt(n.style.top) || 0
+          });
+        });
+        
+        // Initialize quadtree for spatial indexing
+        alignmentCalculator.initializeQuadTree({
+          x: 0,
+          y: 0,
+          width: window.innerWidth * 2,
+          height: window.innerHeight * 2
+        });
+      }
+      
+      e.preventDefault();
+      return;
+    }
+    
+    // In default mode, handle text selection vs note selection
     if (isOverTextContent && !hasExistingSelection) {
       return; // Let browser handle text selection naturally
     }
@@ -1083,9 +2571,11 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
   });
   
   note.addEventListener('focus', () => {
-    currentNote = noteObj;
-    showToolbar();
-    updateToolbar();
+    if (currentTool === 'default') {
+      currentNote = noteObj;
+      showToolbar();
+      updateToolbar();
+    }
   });
   
   note.addEventListener('blur', () => {
@@ -1192,6 +2682,32 @@ function updateSelection(): void {
       isDraggingGroup = true;
       startX = e.clientX;
       startY = e.clientY;
+      console.log('Smart Align Debug - Group drag started');
+      
+      // Initialize alignment system for group drag
+      if (alignmentCalculator && guideRenderer) {
+        // Cache all notes positions
+        const allNotes = Array.from(canvas.querySelectorAll<HTMLDivElement>('.note'));
+        console.log('Smart Align Debug - Caching bounds for group drag:', allNotes.length, 'notes');
+        alignmentCalculator.cacheNoteBounds(allNotes);
+        
+        // Store initial positions of selected notes
+        dragStartPositions.clear();
+        selectedNotes.forEach(n => {
+          dragStartPositions.set(n, {
+            x: parseInt(n.style.left) || 0,
+            y: parseInt(n.style.top) || 0
+          });
+        });
+        
+        // Initialize quadtree for spatial indexing
+        alignmentCalculator.initializeQuadTree({
+          x: 0,
+          y: 0,
+          width: window.innerWidth * 2,
+          height: window.innerHeight * 2
+        });
+      }
     };
     
     showToolbar();
@@ -1204,6 +2720,13 @@ function updateSelection(): void {
   } else {
     appToolbar.classList.remove('show');
     shouldShowToolbarOnHover = false; // Disable hover zone when no selection
+  }
+  
+  // Create resize handles in move mode
+  if (currentTool === 'move' && selectedNotes.size > 0) {
+    createResizeHandles(selectedNotes);
+  } else {
+    clearResizeHandles();
   }
 }
 
@@ -1373,7 +2896,7 @@ function updateToolbar(): void {
       ($('alignRight') as HTMLButtonElement).classList.toggle('active', s.align === 'right');
       ($('bulletList') as HTMLButtonElement).classList.toggle('active', s.listType === 'bullet');
       ($('numberedList') as HTMLButtonElement).classList.toggle('active', s.listType === 'numbered');
-      ($('fontSize') as HTMLSelectElement).value = s.fontSize;
+      updateFontSizeInput();
       ($('fontFamily') as HTMLSelectElement).value = s.fontFamily;
     }
   } else if (currentNote) {
@@ -1387,13 +2910,14 @@ function updateToolbar(): void {
     ($('alignRight') as HTMLButtonElement).classList.toggle('active', s.align === 'right');
     ($('bulletList') as HTMLButtonElement).classList.toggle('active', s.listType === 'bullet');
     ($('numberedList') as HTMLButtonElement).classList.toggle('active', s.listType === 'numbered');
-    ($('fontSize') as HTMLSelectElement).value = s.fontSize;
+    updateFontSizeInput();
     ($('fontFamily') as HTMLSelectElement).value = s.fontFamily;
   }
 }
 
 // Canvas interactions
 canvas.addEventListener('mousedown', e => {
+  // Existing selection logic
   if (!(e.target as HTMLElement).classList.contains('note') && e.target !== logo && e.target !== dragHandle) {
     isSelecting = true;
     startX = e.clientX;
@@ -1477,14 +3001,15 @@ canvas.addEventListener('click', e => {
       updateSelection();
     }
     
-    // Create new note if clicking on canvas (not logo)
-    if (e.target !== logo) {
+    // Create new note if clicking on canvas (not logo) and in default mode
+    if (e.target !== logo && currentTool === 'default') {
       // Save state before creating new note
       saveToHistory();
       
       const note = document.createElement('div');
       note.className = 'note';
-      note.contentEditable = 'true';
+      note.id = `note-${currentDocId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      note.contentEditable = currentTool === 'default' ? 'true' : 'false';
       note.style.left = (e.clientX - canvas.offsetLeft) + 'px';
       note.style.top = e.clientY + 'px';
       
@@ -1522,23 +3047,321 @@ document.addEventListener('click', e => {
 });
 
 document.addEventListener('mousemove', e => {
+  // Add general debug info
+  if (isDraggingGroup || isDraggingNote) {
+    console.log('Smart Align Debug - Drag detected:', {
+      isDraggingGroup,
+      isDraggingNote,
+      currentTool,
+      selectedNotesCount: selectedNotes.size,
+      alignmentSystemReady: !!(alignmentCalculator && guideRenderer)
+    });
+  }
+  
   if (isDraggingGroup) {
+    console.log('Smart Align Debug - Group drag mousemove triggered');
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
-    selectedNotes.forEach(note => {
-      const x = parseInt(note.style.left);
-      const y = parseInt(note.style.top);
-      note.style.left = (x + dx) + 'px';
-      note.style.top = (y + dy) + 'px';
+    
+    // Calculate new positions without applying them yet
+    const firstNote = Array.from(selectedNotes)[0];
+    const startPos = dragStartPositions.get(firstNote);
+    
+    // Check if Alt key is held to temporarily disable snapping
+    const tempDisableSnap = e.altKey;
+    
+    // Visual feedback for Alt key
+    if (guidesCanvas) {
+      guidesCanvas.classList.toggle('snap-disabled', tempDisableSnap);
+    }
+    canvas.classList.toggle('snap-disabled', tempDisableSnap);
+    
+    console.log('Smart Align Debug - Group drag alignment check:', {
+      alignmentCalculator: !!alignmentCalculator,
+      guideRenderer: !!guideRenderer,
+      startPos: !!startPos,
+      tempDisableSnap,
+      altKey: e.altKey
     });
+    
+    // Performance optimization: debounce alignment calculations
+    const currentTime = performance.now();
+    const shouldCalculateAlignment = (currentTime - lastAlignmentTime) >= alignmentDebounceDelay;
+    
+    if (alignmentCalculator && guideRenderer && startPos && !tempDisableSnap && shouldCalculateAlignment) {
+      lastAlignmentTime = currentTime;
+      console.log('Smart Align Debug - Group drag alignment triggered');
+      
+      // Calculate the selection box bounds (just like createResizeHandles does)
+      let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+      selectedNotes.forEach(note => {
+        const x = parseInt(note.style.left) + dx;
+        const y = parseInt(note.style.top) + dy;
+        const w = note.offsetWidth;
+        const h = note.offsetHeight;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x + w);
+        maxY = Math.max(maxY, y + h);
+      });
+      
+      // Use selection box bounds for alignment
+      const draggedBounds: any = {
+        id: 'group',
+        left: minX,
+        top: minY,
+        right: maxX,
+        bottom: maxY,
+        width: maxX - minX,
+        height: maxY - minY,
+        centerX: (minX + maxX) / 2,
+        centerY: (minY + maxY) / 2
+      };
+      
+      console.log('Smart Align Debug - Group bounds:', draggedBounds);
+      
+      // Get IDs of selected notes to exclude from alignment targets
+      const excludeIds = new Set<string>();
+      selectedNotes.forEach(n => {
+        const id = n.id || n.dataset.noteId || '';
+        if (id) excludeIds.add(id);
+      });
+      
+      // Calculate alignments with performance monitoring
+      const alignStart = performance.now();
+      const guides = alignmentCalculator.calculateAlignments(draggedBounds, excludeIds);
+      const alignEnd = performance.now();
+      console.log('Smart Align Debug - Group found', guides.length, 'alignment guides in', (alignEnd - alignStart).toFixed(2), 'ms');
+      
+      // Calculate snap position
+      const snapResult = alignmentCalculator.calculateSnapPosition(draggedBounds, guides);
+      console.log('Smart Align Debug - Group snap result:', snapResult);
+      
+      // Apply positions with snap correction
+      selectedNotes.forEach(note => {
+        const x = parseInt(note.style.left);
+        const y = parseInt(note.style.top);
+        note.style.left = (x + dx + snapResult.deltaX) + 'px';
+        note.style.top = (y + dy + snapResult.deltaY) + 'px';
+      });
+      
+      // Visual feedback for snapping
+      if (snapResult.snapped) {
+        console.log('Smart Align Debug - SNAPPED! Delta:', snapResult.deltaX, snapResult.deltaY);
+        // Brief visual feedback
+        if (guidesCanvas) {
+          guidesCanvas.classList.add('snap-active');
+          setTimeout(() => {
+            if (guidesCanvas) guidesCanvas.classList.remove('snap-active');
+          }, 200);
+        }
+      }
+      
+      // Render guides with visual feedback
+      if (snapResult.guides.length > 0) {
+        console.log('Smart Align Debug - Rendering', snapResult.guides.length, 'guides');
+        guideRenderer.renderGuides(snapResult.guides);
+      } else {
+        guideRenderer.clear();
+      }
+    } else {
+      // Fallback to normal dragging without alignment
+      selectedNotes.forEach(note => {
+        const x = parseInt(note.style.left);
+        const y = parseInt(note.style.top);
+        note.style.left = (x + dx) + 'px';
+        note.style.top = (y + dy) + 'px';
+      });
+      
+      // Clear guides if Alt is pressed
+      if (tempDisableSnap && guideRenderer) {
+        guideRenderer.clear();
+      }
+    }
+    
     if (dragHandle) {
       const hx = parseInt(dragHandle.style.left);
       const hy = parseInt(dragHandle.style.top);
       dragHandle.style.left = (hx + dx) + 'px';
       dragHandle.style.top = (hy + dy) + 'px';
     }
+    
+    // Update resize handles to follow the notes
+    if (currentTool === 'move' && selectedNotes.size > 0) {
+      createResizeHandles(selectedNotes);
+    }
+    
     startX = e.clientX;
     startY = e.clientY;
+  }
+  
+  // Handle individual note dragging in move mode
+  if (isDraggingNote && draggedNote) {
+    console.log('Smart Align Debug - Individual note drag mousemove triggered');
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    
+    // Calculate alignment and snap for dragged note
+    const startPos = dragStartPositions.get(draggedNote);
+    
+    // Check if Alt key is held to temporarily disable snapping
+    const tempDisableSnap = e.altKey;
+    
+    // Visual feedback for Alt key  
+    if (guidesCanvas) {
+      guidesCanvas.classList.toggle('snap-disabled', tempDisableSnap);
+    }
+    canvas.classList.toggle('snap-disabled', tempDisableSnap);
+    
+    console.log('Smart Align Debug - Individual drag alignment check:', {
+      alignmentCalculator: !!alignmentCalculator,
+      guideRenderer: !!guideRenderer,
+      startPos: !!startPos,
+      tempDisableSnap,
+      altKey: e.altKey
+    });
+    
+    // Performance optimization: debounce alignment calculations  
+    const currentTime = performance.now();
+    const shouldCalculateAlignment = (currentTime - lastAlignmentTime) >= alignmentDebounceDelay;
+    
+    if (alignmentCalculator && guideRenderer && startPos && !tempDisableSnap && shouldCalculateAlignment) {
+      lastAlignmentTime = currentTime;
+      console.log('Smart Align Debug - Individual note drag alignment triggered');
+      
+      // Calculate the selection box bounds for single/multiple selected notes
+      let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+      selectedNotes.forEach(note => {
+        const x = parseInt(note.style.left) + dx;
+        const y = parseInt(note.style.top) + dy;
+        const w = note.offsetWidth;
+        const h = note.offsetHeight;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x + w);
+        maxY = Math.max(maxY, y + h);
+      });
+      
+      // Use selection box bounds for alignment
+      const draggedBounds: any = {
+        id: draggedNote.id || draggedNote.dataset.noteId || 'dragged',
+        left: minX,
+        top: minY,
+        right: maxX,
+        bottom: maxY,
+        width: maxX - minX,
+        height: maxY - minY,
+        centerX: (minX + maxX) / 2,
+        centerY: (minY + maxY) / 2
+      };
+      
+      console.log('Smart Align Debug - Individual bounds:', draggedBounds);
+      
+      // Get IDs of selected notes to exclude from alignment targets
+      const excludeIds = new Set<string>();
+      selectedNotes.forEach(n => {
+        const id = n.id || n.dataset.noteId || '';
+        if (id) excludeIds.add(id);
+      });
+      
+      // Calculate alignments with performance monitoring
+      const alignStart = performance.now();
+      const guides = alignmentCalculator.calculateAlignments(draggedBounds, excludeIds);
+      const alignEnd = performance.now();
+      console.log('Smart Align Debug - Individual found', guides.length, 'alignment guides in', (alignEnd - alignStart).toFixed(2), 'ms');
+      
+      // Calculate snap position
+      const snapResult = alignmentCalculator.calculateSnapPosition(draggedBounds, guides);
+      console.log('Smart Align Debug - Individual snap result:', snapResult);
+      
+      // Apply positions with snap correction to all selected notes
+      selectedNotes.forEach(note => {
+        const x = parseInt(note.style.left);
+        const y = parseInt(note.style.top);
+        note.style.left = (x + dx + snapResult.deltaX) + 'px';
+        note.style.top = (y + dy + snapResult.deltaY) + 'px';
+      });
+      
+      // Visual feedback for snapping
+      if (snapResult.snapped) {
+        console.log('Smart Align Debug - Individual SNAPPED! Delta:', snapResult.deltaX, snapResult.deltaY);
+        // Brief visual feedback
+        if (guidesCanvas) {
+          guidesCanvas.classList.add('snap-active');
+          setTimeout(() => {
+            if (guidesCanvas) guidesCanvas.classList.remove('snap-active');
+          }, 200);
+        }
+      }
+      
+      // Render guides with visual feedback
+      if (snapResult.guides.length > 0) {
+        console.log('Smart Align Debug - Rendering', snapResult.guides.length, 'guides');
+        guideRenderer.renderGuides(snapResult.guides);
+      } else {
+        guideRenderer.clear();
+      }
+    } else {
+      // Fallback to normal dragging without alignment
+      selectedNotes.forEach(note => {
+        const x = parseInt(note.style.left);
+        const y = parseInt(note.style.top);
+        note.style.left = (x + dx) + 'px';
+        note.style.top = (y + dy) + 'px';
+      });
+      
+      // Clear guides if Alt is pressed
+      if (tempDisableSnap && guideRenderer) {
+        guideRenderer.clear();
+      }
+    }
+    
+    // Update resize handles to follow the notes
+    if (currentTool === 'move' && selectedNotes.size > 0) {
+      createResizeHandles(selectedNotes);
+    }
+    
+    startX = e.clientX;
+    startY = e.clientY;
+  }
+  
+  // Handle resize
+  if (isResizing && resizeHandle && selectedNotes.size > 0) {
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    
+    // Calculate size change based on diagonal movement
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const sizeChange = Math.round(distance * 0.2); // Scale factor for font size change
+    
+    // Determine direction (increase or decrease size)
+    const handleClass = resizeHandle.className;
+    let newSize = resizeStartSize;
+    
+    if (handleClass.includes('corner-se') || handleClass.includes('corner-ne')) {
+      // Bottom-right or top-right corners: drag right/down to increase
+      newSize = resizeStartSize + (dx > 0 ? sizeChange : -sizeChange);
+    } else if (handleClass.includes('corner-sw') || handleClass.includes('corner-nw')) {
+      // Bottom-left or top-left corners: drag left/up to increase
+      newSize = resizeStartSize + (dx < 0 ? sizeChange : -sizeChange);
+    } else {
+      // Edge handles: use combined movement
+      newSize = resizeStartSize + ((dx + dy) > 0 ? sizeChange : -sizeChange);
+    }
+    
+    // Clamp font size between 8px and 72px
+    newSize = Math.max(8, Math.min(72, newSize));
+    
+    // Apply new font size to all selected notes
+    selectedNotes.forEach(note => {
+      if ((note as any).__noteData) {
+        (note as any).__noteData.styles.fontSize = newSize + 'px';
+        applyStyles(note, (note as any).__noteData.styles);
+      }
+    });
+    
+    // Update resize handles position after size change
+    createResizeHandles(selectedNotes);
   }
 });
 
@@ -1546,8 +3369,61 @@ document.addEventListener('mouseup', () => {
   if (isDraggingGroup) {
     isDraggingGroup = false;
     saveCurrentDocument();
+    
+    // Clear alignment guides
+    if (guideRenderer) {
+      guideRenderer.clear(true); // Fade out
+    }
+    if (alignmentCalculator) {
+      alignmentCalculator.clearCache();
+    }
+    dragStartPositions.clear();
+  }
+  
+  // Handle note dragging end
+  if (isDraggingNote) {
+    isDraggingNote = false;
+    draggedNote = null;
+    saveCurrentDocument();
+    
+    // Clear alignment guides
+    if (guideRenderer) {
+      guideRenderer.clear(true); // Fade out
+    }
+    if (alignmentCalculator) {
+      alignmentCalculator.clearCache();
+    }
+    dragStartPositions.clear();
+  }
+  
+  // Handle resize end
+  if (isResizing) {
+    isResizing = false;
+    resizeHandle = null;
+    saveCurrentDocument();
   }
 });
+
+// Tool buttons
+$('moveTool').onclick = toggleMoveTool;
+
+// Snap toggle button
+$('snapToggle').onclick = () => {
+  snapEnabled = !snapEnabled;
+  
+  // Update alignment calculator settings
+  if (alignmentCalculator) {
+    alignmentCalculator.updateOptions({ snapEnabled });
+  }
+  
+  // Update button visual state
+  updateToolbarActiveStates();
+  
+  // Clear any active guides when disabling
+  if (!snapEnabled && guideRenderer) {
+    guideRenderer.clear();
+  }
+};
 
 // Toolbar buttons
 ['bold', 'italic', 'underline', 'strike'].forEach(id => {
@@ -1604,8 +3480,8 @@ document.addEventListener('mouseup', () => {
 $('bulletList').onclick = toggleBulletList;
 $('numberedList').onclick = toggleNumberedList;
 
-($('fontSize') as HTMLSelectElement).onchange = () => {
-  const size = ($('fontSize') as HTMLSelectElement).value as FontSize;
+// Font size controls
+function applyFontSize(size: string): void {
   const sel = window.getSelection();
   
   if (sel?.toString() && sel.rangeCount) {
@@ -1641,6 +3517,50 @@ $('numberedList').onclick = toggleNumberedList;
     applyStylesAndUpdate(currentNote.el, currentNote.styles);
   }
   focusCurrentNoteIfSingle();
+}
+
+function updateFontSizeInput(): void {
+  const input = $('fontSizeInput') as HTMLInputElement;
+  if (selectedNotes.size > 1) {
+    const firstNote = (Array.from(selectedNotes)[0] as any).__noteData;
+    if (firstNote) {
+      input.value = parseInt(firstNote.styles.fontSize).toString();
+    }
+  } else if (currentNote) {
+    input.value = parseInt(currentNote.styles.fontSize).toString();
+  }
+}
+
+($('fontSizeInput') as HTMLInputElement).onchange = () => {
+  const input = $('fontSizeInput') as HTMLInputElement;
+  let size = parseInt(input.value);
+  
+  // Validate and clamp size
+  if (isNaN(size) || size < 8) {
+    size = 8;
+    input.value = '8';
+  } else if (size > 72) {
+    size = 72;
+    input.value = '72';
+  }
+  
+  applyFontSize(size + 'px');
+};
+
+($('fontSizeDecrease') as HTMLButtonElement).onclick = () => {
+  const input = $('fontSizeInput') as HTMLInputElement;
+  let currentSize = parseInt(input.value) || 16;
+  const newSize = Math.max(8, currentSize - 1);
+  input.value = newSize.toString();
+  applyFontSize(newSize + 'px');
+};
+
+($('fontSizeIncrease') as HTMLButtonElement).onclick = () => {
+  const input = $('fontSizeInput') as HTMLInputElement;
+  let currentSize = parseInt(input.value) || 16;
+  const newSize = Math.min(72, currentSize + 1);
+  input.value = newSize.toString();
+  applyFontSize(newSize + 'px');
 };
 
 ($('fontFamily') as HTMLSelectElement).onchange = () => {
@@ -1705,6 +3625,8 @@ document.addEventListener('keydown', e => {
     updateSelection();
     return;
   }
+  
+  
   
   // Handle Undo/Redo
   if (ctrlKey && e.key.toLowerCase() === 'z' && !(document.activeElement as HTMLElement).classList.contains('note')) {
@@ -1836,10 +3758,11 @@ document.addEventListener('keydown', e => {
         selectedNotes.clear();
         const offset = 30;
         
-        notesData.forEach((noteData: any) => {
+        notesData.forEach((noteData: any, index: number) => {
           const note = document.createElement('div');
           note.className = 'note';
-          note.contentEditable = 'true';
+          note.id = `note-${currentDocId}-paste-${Date.now()}-${index}`;
+          note.contentEditable = currentTool === 'default' ? 'true' : 'false';
           note.style.left = (noteData.x + offset) + 'px';
           note.style.top = (noteData.y + offset) + 'px';
           note.innerHTML = noteData.html;
@@ -1950,78 +3873,14 @@ document.addEventListener('keydown', e => {
   }
 });
 
+
+
 // Initialize
 loadTheme();
 loadSettings();
 loadDocuments();
 initHeaderAutoHide();
-</file>
-
-<file path=".gitignore">
-node_modules/
-dist/
-*.log
-.DS_Store
-</file>
-
-<file path="package.json">
-{
-  "name": "anywhere",
-  "version": "1.0.0",
-  "description": "A freeform note-taking application with TypeScript",
-  "main": "src/app.js",
-  "scripts": {
-    "build": "tsc",
-    "watch": "tsc --watch",
-    "serve": "python -m http.server 8080",
-    "dev-server": "live-server src --port=3000 --wait=500",
-    "dev": "concurrently \"npm run watch\" \"live-server --port=3000 --wait=500 --open=src/index.html\""
-  },
-  "keywords": [
-    "notes",
-    "typescript",
-    "canvas",
-    "note-taking"
-  ],
-  "author": "",
-  "license": "MIT",
-  "devDependencies": {
-    "concurrently": "^9.2.0",
-    "live-server": "^1.2.2",
-    "typescript": "^5.3.0"
-  }
-}
-</file>
-
-<file path="tsconfig.json">
-{
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "none",
-    "lib": ["DOM", "DOM.Iterable", "ES2020"],
-    "moduleResolution": "node",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "declaration": false,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "sourceMap": true,
-    "removeComments": false,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": false,
-    "exactOptionalPropertyTypes": false
-  },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
-}
+updateCanvasClasses(); // Initialize tool state
 </file>
 
 <file path="CLAUDE.md">
@@ -2031,7 +3890,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Anywhere** is a freeform note-taking application built with TypeScript, HTML, and CSS. It provides an infinite canvas where users can click anywhere to create text notes with rich formatting options.
+**Anyplace** is a freeform note-taking application built with TypeScript, HTML, and CSS. It provides an infinite canvas where users can click anywhere to create text notes with rich formatting options.
 
 ## Architecture
 
@@ -2134,86 +3993,19 @@ dist/
 - **Group Operations**: Selected notes can be moved and formatted together
 </file>
 
-<file path="readme.md">
-# Anywhere - Freeform Note Taking
-
-A freeform note-taking application that provides an infinite canvas where you can click anywhere to create text notes with rich formatting options.
-
-## Features
-
-- **Infinite Canvas**: Click anywhere to create a note
-- **Rich Text Formatting**: Bold, italic, underline, strikethrough, font size/family, alignment
-- **Multi-selection**: Select multiple notes for group operations
-- **Document Management**: Multiple documents with search, pinning, and organization
-- **Undo/Redo Support**: Full undo/redo history for all operations
-- **Copy/Paste**: Copy and paste notes within and between documents
-- **Theme System**: Light/dark mode toggle
-- **Auto-save**: All changes saved automatically to localStorage
-
-## Keyboard Shortcuts
-
-### Selection & Navigation
-- **Escape** - Clear current selection
-- **Ctrl/Cmd + A** - Select all notes
-- **Delete/Backspace** - Delete selected notes
-- **Arrow Keys** - Move selected notes (1px increments)
-- **Shift + Arrow Keys** - Move selected notes (10px increments)
-
-### Document Management
-- **Ctrl/Cmd + N** - Create new document
-- **Ctrl/Cmd + S** - Force save current document
-
-### Editing & Formatting
-- **Ctrl/Cmd + Z** - Undo last action
-- **Ctrl/Cmd + Shift + Z** - Redo last action
-- **Ctrl/Cmd + C** - Copy selected notes
-- **Ctrl/Cmd + V** - Paste copied notes
-- **Ctrl/Cmd + D** - Duplicate selected notes
-
-#### Text Formatting (selected notes or active note)
-- **Ctrl/Cmd + B** - Toggle bold
-- **Ctrl/Cmd + I** - Toggle italic  
-- **Ctrl/Cmd + U** - Toggle underline
-- **Ctrl/Cmd + E** - Center align text
-- **Ctrl/Cmd + L** - Left align text
-- **Ctrl/Cmd + R** - Right align text
-
-#### Font Size (selected notes only)
-- **Ctrl/Cmd + Plus/=** - Increase font size
-- **Ctrl/Cmd + Minus** - Decrease font size
-
-## Usage
-
-1. **Creating Notes**: Click anywhere on the canvas to create a new note
-2. **Selecting Notes**: 
-   - Click and drag to select multiple notes with selection box
-   - Shift+click to add notes to selection
-   - Click on individual notes to select them
-3. **Formatting**: Use the toolbar or keyboard shortcuts to format text
-4. **Moving Notes**: Drag individual notes or use arrow keys for precise positioning
-5. **Documents**: Use the sidebar to manage multiple documents, search, and organize
-
-## Development
-
-This is a pure client-side application built with vanilla HTML, CSS, and JavaScript.
-
-**Development**: Open `src/index.html` directly in a browser or use a local server  
-**No Build Process**: No dependencies or build tools required
-</file>
-
 <file path="src/index.html">
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Anywhere</title>
+<title>Anyplace</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div id="sidebar">
   <div class="sidebar-logo">
-    <span class="logo-full">Anywhere</span>
+    <span class="logo-full">Anyplace</span>
     <span class="logo-short">A</span>
   </div>
   <button class="sb-btn" id="libraryBtn">
@@ -2265,10 +4057,31 @@ This is a pure client-side application built with vanilla HTML, CSS, and JavaScr
 </div>
 
 <div id="canvas">
-  <div id="logo">Anywhere<div id="logo-subtext">Your ideas anywhere, anyplace</div></div>
+  <div id="logo">Anyplace<div id="logo-subtext">Your ideas anywhere, anyplace</div></div>
 </div>
 
+<canvas id="alignmentGuides"></canvas>
+
 <div id="toolbar">
+  <button id="moveTool" title="Move Tool">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/>
+      <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/>
+      <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/>
+      <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.83L8 15"/>
+    </svg>
+  </button>
+  <button id="snapToggle" title="Toggle Alignment Guides (Alt to temporarily disable)" class="active">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="7" height="7"/>
+      <rect x="14" y="3" width="7" height="7"/>
+      <rect x="14" y="14" width="7" height="7"/>
+      <rect x="3" y="14" width="7" height="7"/>
+      <line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="2 2"/>
+      <line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="2 2"/>
+    </svg>
+  </button>
+  <div class="sep"></div>
   <button id="bold"><b>B</b></button>
   <button id="italic"><i>I</i></button>
   <button id="underline"><u>U</u></button>
@@ -2317,27 +4130,36 @@ This is a pure client-side application built with vanilla HTML, CSS, and JavaScr
     </svg>
   </button>
   <div class="sep"></div>
-  <select id="fontSize">
-    <option value="12px">12</option>
-    <option value="14px">14</option>
-    <option value="16px" selected>16</option>
-    <option value="18px">18</option>
-    <option value="20px">20</option>
-    <option value="24px">24</option>
-    <option value="28px">28</option>
-    <option value="32px">32</option>
-    <option value="48px">48</option>
-  </select>
+  <div class="font-size-controls">
+    <button id="fontSizeDecrease" title="Decrease font size">−</button>
+    <input id="fontSizeInput" type="number" min="8" max="72" value="16" title="Font size">
+    <button id="fontSizeIncrease" title="Increase font size">+</button>
+  </div>
   <select id="fontFamily">
-    <option value="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Sans</option>
-    <option value="Georgia,'Times New Roman',serif">Serif</option>
-    <option value="'Courier New',Consolas,monospace">Mono</option>
+    <option value="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">System Default</option>
     <option value="Arial,Helvetica,sans-serif">Arial</option>
-    <option value="'Times New Roman',Times,serif">Times</option>
+    <option value="'Helvetica Neue',Helvetica,sans-serif">Helvetica</option>
     <option value="Verdana,Geneva,sans-serif">Verdana</option>
+    <option value="'Trebuchet MS',sans-serif">Trebuchet MS</option>
+    <option value="'Lucida Sans',sans-serif">Lucida Sans</option>
+    <option value="Tahoma,Geneva,sans-serif">Tahoma</option>
+    <option value="'Segoe UI',Tahoma,Geneva,sans-serif">Segoe UI</option>
+    <option value="Georgia,'Times New Roman',serif">Georgia</option>
+    <option value="'Times New Roman',Times,serif">Times New Roman</option>
+    <option value="'Book Antiqua',Palatino,serif">Book Antiqua</option>
+    <option value="Garamond,serif">Garamond</option>
+    <option value="'Courier New',Courier,monospace">Courier New</option>
+    <option value="Monaco,'Lucida Console',monospace">Monaco</option>
+    <option value="Consolas,'Liberation Mono',monospace">Consolas</option>
+    <option value="'Fira Code',monospace">Fira Code</option>
+    <option value="Impact,'Arial Black',sans-serif">Impact</option>
+    <option value="'Comic Sans MS',cursive">Comic Sans MS</option>
+    <option value="Papyrus,fantasy">Papyrus</option>
+    <option value="'Brush Script MT',cursive">Brush Script</option>
   </select>
 </div>
 
+<script src="../dist/alignment.js"></script>
 <script src="../dist/app.js"></script>
 </body>
 </html>
@@ -2510,7 +4332,7 @@ This is a pure client-side application built with vanilla HTML, CSS, and JavaScr
   /* Toolbar */
   #toolbar {
     position: fixed;
-    top: -60px;
+    top: 20px;
     left: 50%;
     transform: translateX(-50%);
     background: var(--tb);
@@ -2536,7 +4358,7 @@ This is a pure client-side application built with vanilla HTML, CSS, and JavaScr
     top: 0;
     left: 0;
     right: 0;
-    height: 80px;
+    height: 100px;
     z-index: 999;
     pointer-events: auto;
     background: transparent;
@@ -2570,6 +4392,43 @@ This is a pure client-side application built with vanilla HTML, CSS, and JavaScr
     cursor: pointer;
     font-size: 14px;
     outline: none;
+  }
+  
+  .font-size-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  
+  .font-size-controls button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+  }
+  
+  .font-size-controls input {
+    width: 50px;
+    padding: 4px 6px;
+    border: 1px solid var(--bd);
+    border-radius: 4px;
+    background: rgba(52, 69, 50, 0.95);
+    color: #ffffff;
+    font-size: 14px;
+    text-align: center;
+    outline: none;
+    -moz-appearance: textfield;
+  }
+  
+  .font-size-controls input::-webkit-outer-spin-button,
+  .font-size-controls input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
   }
   
   .sep {
@@ -2766,6 +4625,52 @@ This is a pure client-side application built with vanilla HTML, CSS, and JavaScr
   #sidebar.exp ~ #canvas {
     left: 260px;
   }
+
+  /* Alignment guides canvas */
+  #alignmentGuides {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 1;
+    transition: opacity 0.15s ease-out;
+  }
+
+  #alignmentGuides.fading {
+    opacity: 0;
+  }
+  
+  #alignmentGuides.snap-disabled {
+    opacity: 0.3;
+    filter: grayscale(100%);
+  }
+  
+  /* Visual feedback for snapping */
+  #alignmentGuides.snap-active {
+    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
+  }
+  
+  /* Cursor feedback when snapping is disabled */
+  #canvas.move-mode.snap-disabled {
+    cursor: not-allowed !important;
+  }
+  
+  #canvas.move-mode.snap-disabled .note {
+    cursor: not-allowed !important;
+  }
+
+  /* Tool-specific cursor styles */
+  #canvas.move-mode {
+    cursor: default;
+  }
+
+  /* Move tool cursor when hovering over notes */
+  #canvas.move-mode .note {
+    cursor: move !important;
+  }
   
   .sb-footer {
     margin-top: auto;
@@ -2790,6 +4695,25 @@ This is a pure client-side application built with vanilla HTML, CSS, and JavaScr
     cursor: move;
     z-index: 100;
   }
+
+  .resize-handle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #344532;
+    border: 1px solid #fff;
+    border-radius: 1px;
+    z-index: 101;
+  }
+
+  .resize-handle.corner-nw { cursor: nw-resize; }
+  .resize-handle.corner-ne { cursor: ne-resize; }
+  .resize-handle.corner-sw { cursor: sw-resize; }
+  .resize-handle.corner-se { cursor: se-resize; }
+  .resize-handle.edge-n { cursor: n-resize; }
+  .resize-handle.edge-s { cursor: s-resize; }
+  .resize-handle.edge-w { cursor: w-resize; }
+  .resize-handle.edge-e { cursor: e-resize; }
   
   /* Modal */
   .modal {

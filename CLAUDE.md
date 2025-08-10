@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Anywhere** is a freeform note-taking application built with TypeScript, HTML, and CSS. It provides an infinite canvas where users can click anywhere to create text notes with rich formatting options.
+**Anyplace** is a freeform note-taking application built with TypeScript, HTML, and CSS. It provides an infinite canvas where users can click anywhere to create text notes with rich formatting options.
 
 ## Architecture
 
