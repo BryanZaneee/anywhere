@@ -232,6 +232,16 @@ class AlignmentSystem {
   private renderGuides(): void {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+    // Get the main canvas where notes are placed to calculate its offset.
+    const noteCanvas = document.getElementById('canvas'); 
+    if (!noteCanvas) {
+      return; // Cannot render guides without the main canvas reference.
+    }
+
+    const canvasRect = noteCanvas.getBoundingClientRect();
+    const offsetX = canvasRect.left;
+    const offsetY = canvasRect.top;
+
     this.guides.forEach(guide => {
       this.ctx.save();
       
@@ -242,11 +252,15 @@ class AlignmentSystem {
       
       this.ctx.beginPath();
       if (guide.type === 'vertical') {
-        this.ctx.moveTo(guide.position, 0);
-        this.ctx.lineTo(guide.position, this.canvas.height);
+        // Correct the position by adding the canvas's left offset
+        const correctedPosition = guide.position + offsetX;
+        this.ctx.moveTo(correctedPosition, 0);
+        this.ctx.lineTo(correctedPosition, this.canvas.height);
       } else {
-        this.ctx.moveTo(0, guide.position);
-        this.ctx.lineTo(this.canvas.width, guide.position);
+        // Correct the position by adding the canvas's top offset
+        const correctedPosition = guide.position + offsetY;
+        this.ctx.moveTo(0, correctedPosition);
+        this.ctx.lineTo(this.canvas.width, correctedPosition);
       }
       this.ctx.stroke();
       
