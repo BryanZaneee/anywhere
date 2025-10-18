@@ -1,22 +1,36 @@
 {
-  "name": "anywhere",
+  "name": "anyplace",
   "version": "1.0.0",
-  "description": "A freeform note-taking application with TypeScript",
-  "main": "src/app.js",
+  "description": "A minimalist freeform note-taking application with infinite canvas, smart alignment guides, and rich formatting",
+  "main": "dist/app.js",
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
+    "typecheck": "tsc --noEmit",
     "serve": "python -m http.server 8080",
-    "dev-server": "live-server src --port=3000 --wait=500",
-    "dev": "concurrently \"npm run watch\" \"live-server --port=3000 --wait=500 --open=src/index.html\""
+    "start": "npm run serve",
+    "dev": "concurrently \"npm run watch\" \"npm run serve\""
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/anyplace.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/anyplace/issues"
+  },
+  "homepage": "https://github.com/yourusername/anyplace#readme",
   "keywords": [
     "notes",
+    "note-taking",
     "typescript",
     "canvas",
-    "note-taking"
+    "infinite-canvas",
+    "freeform",
+    "rich-text",
+    "alignment",
+    "layers"
   ],
-  "author": "",
+  "author": "Your Name",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^9.2.0",

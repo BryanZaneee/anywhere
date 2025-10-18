@@ -88,6 +88,20 @@ interface DocumentsStorage {
 
 // Note: We'll use type assertions (note as any).__noteData for the custom property
 
+// Constants
+const SNAP_THRESHOLD = 4; // pixels
+const HEADER_IDLE_TIMEOUT = 10000; // milliseconds
+const SAVE_DEBOUNCE_DELAY = 300; // milliseconds
+const MAX_HISTORY = 50;
+const DEFAULT_FONT_SIZE = '16px';
+const MIN_FONT_SIZE = 8;
+const MAX_FONT_SIZE = 72;
+const DUPLICATE_OFFSET = 20; // pixels
+const PASTE_OFFSET = 30; // pixels
+const ARROW_MOVE_DISTANCE = 1; // pixels
+const ARROW_MOVE_DISTANCE_SHIFT = 10; // pixels
+const FONT_SIZE_STEP = 2; // for keyboard shortcuts
+
 // State management
 let currentNote: NoteObject | null = null;
 let currentDocId: string = '';
@@ -104,7 +118,7 @@ let justCompletedSelection: boolean = false;
 
 // Header auto-hide system
 let headerIdleTimer: number | null = null;
-let headerIdleTimeout: number = 10000; // 10 seconds default
+let headerIdleTimeout: number = HEADER_IDLE_TIMEOUT; // 10 seconds default
 let headerCanHide: boolean = true;
 let isToolbarHovered: boolean = false;
 let shouldShowToolbarOnHover: boolean = true;
@@ -130,6 +144,28 @@ function focusCurrentNoteIfSingle(): void {
   if (currentNote && selectedNotes.size <= 1) {
     currentNote.el.focus();
   }
+}
+
+// Debounce helper function
+function debounce<T extends (...args: any[]) => void>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: number | null = null;
+  return function(...args: Parameters<T>): void {
+    if (timeout) clearTimeout(timeout);
+    timeout = window.setTimeout(() => func(...args), wait);
+  };
+}
+
+// Type-safe helper to get note data
+function getNoteData(note: HTMLDivElement): NoteObject | null {
+  return (note as any).__noteData || null;
+}
+
+// Type-safe helper to set note data
+function setNoteData(note: HTMLDivElement, data: NoteObject): void {
+  (note as any).__noteData = data;
 }
 
 function generateTitleFromText(text: string): string {
@@ -178,7 +214,6 @@ function setToolMode(mode: ToolMode): void {
 
 function toggleMoveTool(): void {
   const newTool = currentTool === 'move' ? 'default' : 'move';
-  console.log('Smart Align Debug - Tool changed from', currentTool, 'to', newTool);
   setToolMode(newTool);
 }
 
@@ -285,7 +320,6 @@ function positionCursorInElement(element: HTMLElement): void {
 // Undo/Redo system
 let documentHistory: DocumentHistoryState[] = [];
 let historyIndex: number = -1;
-const MAX_HISTORY: number = 50;
 
 // DOM elements
 const $: (id: string) => HTMLElement = (id: string) => {
@@ -307,64 +341,10 @@ let guidesCanvas: HTMLCanvasElement;
 
 // Initialize alignment system
 guidesCanvas = $('alignmentGuides') as HTMLCanvasElement;
-console.log('Smart Align Debug - Canvas found:', !!guidesCanvas);
-console.log('Smart Align Debug - AlignmentCalculator available:', !!(window as any).AlignmentCalculator);
-console.log('Smart Align Debug - GuideRenderer available:', !!(window as any).GuideRenderer);
-
-// Helper function to ensure we have test notes for alignment
-function ensureTestNotes(): void {
-  const existingNotes = canvas.querySelectorAll<HTMLDivElement>('.note');
-  console.log('Smart Align Debug - Existing notes:', existingNotes.length);
-  
-  // Create test notes if we have fewer than 2
-  if (existingNotes.length < 2) {
-    const positions = [
-      { x: 100, y: 100, text: 'Test Note 1' },
-      { x: 300, y: 100, text: 'Test Note 2' },
-      { x: 200, y: 250, text: 'Test Note 3' }
-    ];
-    
-    positions.slice(existingNotes.length).forEach((pos, index) => {
-      const note = document.createElement('div');
-      note.className = 'note';
-      note.id = `test-note-${existingNotes.length + index}`;
-      note.contentEditable = currentTool === 'default' ? 'true' : 'false';
-      note.style.left = pos.x + 'px';
-      note.style.top = pos.y + 'px';
-      note.innerHTML = `<p>${pos.text}</p>`;
-      
-      const noteObj: NoteObject = {
-        el: note,
-        styles: {
-          bold: false,
-          italic: false,
-          underline: false,
-          strike: false,
-          fontSize: '16px',
-          fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-          align: 'left',
-          listType: 'none'
-        }
-      };
-      
-      canvas.appendChild(note);
-      setupNote(note, noteObj);
-      console.log('Smart Align Debug - Created test note:', pos.text, 'at', pos.x, pos.y);
-    });
-    
-    saveCurrentDocument();
-  }
-}
 
 // Initialize new simplified alignment system
 if (guidesCanvas && (window as any).AlignmentSystem) {
   alignmentSystem = new (window as any).AlignmentSystem(guidesCanvas);
-  console.log('Alignment system initialized successfully');
-} else {
-  console.warn('Failed to initialize alignment system:', {
-    canvas: !!guidesCanvas,
-    alignmentSystem: !!(window as any).AlignmentSystem
-  });
 }
 
 // Create toolbar hover zone
@@ -376,6 +356,13 @@ document.body.appendChild(toolbarHoverZone);
 function loadTheme(): void {
   const isDark = localStorage.getItem('darkMode') === 'true';
   document.body.classList.toggle('dark', isDark);
+
+  // Update icon visibility
+  const sunIcon = $('sunIcon') as HTMLElement;
+  const moonIcon = $('moonIcon') as HTMLElement;
+  sunIcon.style.display = isDark ? 'none' : 'block';
+  moonIcon.style.display = isDark ? 'block' : 'none';
+
   themeText.textContent = isDark ? 'Dark Mode' : 'Light Mode';
 }
 
@@ -403,11 +390,6 @@ const keyboardShortcuts: KeyboardShortcuts = {
         action: "Redo",
         mac: "⌘ + Shift + Z",
         windows: "Ctrl + Shift + Z"
-      },
-      {
-        action: "Select All Notes",
-        mac: "⌘ + A",
-        windows: "Ctrl + A"
       },
       {
         action: "Clear Selection",
@@ -515,11 +497,6 @@ const keyboardShortcuts: KeyboardShortcuts = {
         windows: "Ctrl + U"
       },
       {
-        action: "Strikethrough",
-        mac: "⌘ + Shift + X",
-        windows: "Ctrl + Shift + X"
-      },
-      {
         action: "Align Left (selected notes)",
         mac: "⌘ + L",
         windows: "Ctrl + L"
@@ -551,14 +528,14 @@ const keyboardShortcuts: KeyboardShortcuts = {
 // Generate shortcuts HTML for the specified platform
 function generateShortcutsHTML(platform: Platform): string {
   let html = '';
-  
-  Object.entries(keyboardShortcuts).forEach(([category, data]) => {
+
+  Object.entries(keyboardShortcuts).forEach(([_category, data]) => {
     html += `
       <div class="shortcuts-section">
         <h4>${data.title}</h4>
         <div class="shortcuts-list">
     `;
-    
+
     data.shortcuts.forEach(shortcut => {
       const key = platform === 'mac' ? shortcut.mac : shortcut.windows;
       html += `
@@ -568,13 +545,13 @@ function generateShortcutsHTML(platform: Platform): string {
         </div>
       `;
     });
-    
+
     html += `
         </div>
       </div>
     `;
   });
-  
+
   return html;
 }
 
@@ -589,11 +566,15 @@ function loadSettings(): void {
 }
 
 function saveSettings(): void {
-  const settings: AppSettings = {
-    headerIdleTimeout,
-    headerCanHide
-  };
-  localStorage.setItem('anywhereSettings', JSON.stringify(settings));
+  try {
+    const settings: AppSettings = {
+      headerIdleTimeout,
+      headerCanHide
+    };
+    localStorage.setItem('anywhereSettings', JSON.stringify(settings));
+  } catch (e) {
+    console.error('Failed to save settings to localStorage:', e);
+  }
 }
 
 // Helper function to show toolbar properly
@@ -661,28 +642,37 @@ function initHeaderAutoHide(): void {
 
 // Document management
 function loadDocuments(): void {
-  const saved = localStorage.getItem('anywhereDocuments');
-  if (saved) documents = JSON.parse(saved);
-  
-  // Migrate existing documents to include hasCustomTitle flag
-  Object.values(documents).forEach(doc => {
-    if (doc.hasCustomTitle === undefined) {
-      // If title starts with "Note #", it was auto-generated, otherwise it's custom
-      doc.hasCustomTitle = !doc.title.startsWith('Note #');
+  try {
+    const saved = localStorage.getItem('anywhereDocuments');
+    if (saved) {
+      documents = JSON.parse(saved);
+      const docIds = Object.keys(documents);
+      if (docIds.length > 0) {
+        // Load the first document
+        loadDocument(docIds[0]);
+      } else {
+        // No documents found, create a new one
+        createNewDocument();
+      }
+    } else {
+      // No saved documents, create a new one
+      createNewDocument();
     }
-  });
-  
-  if (!Object.keys(documents).length) {
+  } catch (e) {
+    console.error('Failed to load documents from localStorage:', e);
+    // Fallback: create new document
     createNewDocument();
-  } else {
-    currentDocId = Object.keys(documents)[0];
-    loadDocument(currentDocId);
   }
   updateNotesList();
 }
 
 function saveDocuments(): void {
-  localStorage.setItem('anywhereDocuments', JSON.stringify(documents));
+  try {
+    localStorage.setItem('anywhereDocuments', JSON.stringify(documents));
+  } catch (e) {
+    console.error('Failed to save documents to localStorage:', e);
+    // Could show user notification here if needed
+  }
 }
 
 function createNewDocument(): void {
@@ -738,9 +728,10 @@ function loadDocument(id: string): void {
   updateLayersPanel(); // Update layers panel when document is loaded
 }
 
-function saveCurrentDocument(): void {
+// Save current document immediately (for critical operations)
+function saveCurrentDocumentImmediate(): void {
   if (!currentDocId) return;
-  
+
   const notes: NoteData[] = Array.from(canvas.querySelectorAll<HTMLDivElement>('.note')).map(note => {
     const noteData = (note as any).__noteData;
     return {
@@ -753,16 +744,16 @@ function saveCurrentDocument(): void {
         italic: false,
         underline: false,
         strike: false,
-        fontSize: '16px',
+        fontSize: DEFAULT_FONT_SIZE,
         fontFamily: '-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif',
         align: 'left',
         listType: 'none'
       }
     };
   });
-  
+
   documents[currentDocId].notes = notes;
-  
+
   // Auto-generate title from first note if document hasn't been manually titled
   const currentDoc = documents[currentDocId];
   if (!currentDoc.hasCustomTitle && notes.length > 0) {
@@ -775,9 +766,12 @@ function saveCurrentDocument(): void {
       }
     }
   }
-  
+
   saveDocuments();
 }
+
+// Debounced save for frequent operations
+const saveCurrentDocument = debounce(saveCurrentDocumentImmediate, SAVE_DEBOUNCE_DELAY);
 
 // Undo/Redo system functions
 function saveToHistory(): void {
@@ -1199,8 +1193,8 @@ function updateLayersPanel(): void {
   });
   
   layersListElement!.innerHTML = '';
-  
-  allNotes.forEach((note, index) => {
+
+  allNotes.forEach((note) => {
     const noteData = (note as any).__noteData as NoteObject;
     const layerItem = document.createElement('div');
     layerItem.className = 'layer-item';
@@ -1372,7 +1366,6 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
     
     // In move mode, always select the note for moving and enable dragging
     if (currentTool === 'move') {
-      console.log('Smart Align Debug - Move mode note click detected');
       if (!e.shiftKey) selectedNotes.clear();
       selectedNotes.add(note);
       updateSelection();
@@ -1381,7 +1374,6 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
       isDraggingNote = true;
       draggedNote = note;
       startX = e.clientX;
-      console.log('Smart Align Debug - Individual note drag started');
       startY = e.clientY;
       
       // Store initial positions of selected notes for drag handling
@@ -1528,8 +1520,7 @@ function updateSelection(): void {
       isDraggingGroup = true;
       startX = e.clientX;
       startY = e.clientY;
-      console.log('Smart Align Debug - Group drag started');
-      
+
       // Store initial positions of selected notes for group drag handling
       dragStartPositions.clear();
       selectedNotes.forEach(n => {
@@ -1799,7 +1790,7 @@ canvas.addEventListener('mousemove', e => {
   }
 });
 
-canvas.addEventListener('mouseup', e => {
+canvas.addEventListener('mouseup', () => {
   if (isSelecting) {
     isSelecting = false;
     if (selectBox) {
@@ -1947,10 +1938,7 @@ document.addEventListener('mousemove', e => {
     if (currentTool === 'move' && selectedNotes.size > 0) {
       createResizeHandles(selectedNotes);
     }
-    
-    // Update layers panel when notes move
-    updateLayersPanel();
-    
+
     startX = e.clientX;
     startY = e.clientY;
   }
@@ -1998,39 +1986,39 @@ document.addEventListener('mousemove', e => {
 document.addEventListener('mouseup', () => {
   if (isDraggingGroup) {
     isDraggingGroup = false;
-    saveCurrentDocument();
-    
+    saveCurrentDocumentImmediate(); // Use immediate save for drag operations
+
     // Clear alignment guides
     if (alignmentSystem) {
       alignmentSystem.clearGuides();
     }
     dragStartPositions.clear();
-    
-    // Update layers panel after drag
+
+    // Update layers panel after drag completes
     updateLayersPanel();
   }
-  
+
   // Handle note dragging end
   if (isDraggingNote) {
     isDraggingNote = false;
     draggedNote = null;
-    saveCurrentDocument();
-    
+    saveCurrentDocumentImmediate(); // Use immediate save for drag operations
+
     // Clear alignment guides
     if (alignmentSystem) {
       alignmentSystem.clearGuides();
     }
     dragStartPositions.clear();
-    
-    // Update layers panel after drag
+
+    // Update layers panel after drag completes
     updateLayersPanel();
   }
-  
+
   // Handle resize end
   if (isResizing) {
     isResizing = false;
     resizeHandle = null;
-    saveCurrentDocument();
+    saveCurrentDocumentImmediate(); // Use immediate save for resize operations
   }
 });
 
@@ -2238,6 +2226,13 @@ $('settingsBtn').onclick = () => showSettingsModal();
 $('themeToggle').onclick = () => {
   const isDark = document.body.classList.toggle('dark');
   localStorage.setItem('darkMode', isDark.toString());
+
+  // Update icon visibility
+  const sunIcon = $('sunIcon') as HTMLElement;
+  const moonIcon = $('moonIcon') as HTMLElement;
+  sunIcon.style.display = isDark ? 'none' : 'block';
+  moonIcon.style.display = isDark ? 'block' : 'none';
+
   themeText.textContent = isDark ? 'Dark Mode' : 'Light Mode';
 };
 
@@ -2411,7 +2406,7 @@ document.addEventListener('keydown', e => {
         updateSelection();
         saveCurrentDocument();
       } catch (e) {
-        console.warn('Failed to paste notes:', e);
+        // Silent fail on paste error
       }
     }
     return;

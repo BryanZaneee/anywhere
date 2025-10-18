@@ -5,42 +5,45 @@
   }
   
   :root {
-    --bg: #fafafa;
-    --txt: #333;
-    --sb: #344532;
+    /* BZS Design System Colors */
+    --bg: #f5f5f0;
+    --txt: #1a1a1a;
+    --sb: #2d4a4a;
     --st: #ccc;
     --sh: rgba(255, 255, 255, 0.1);
     --nf: rgba(255, 255, 255, 0.5);
     --nb: rgba(0, 0, 0, 0.1);
-    --tb: rgba(52, 69, 50, 0.9);
+    --tb: rgba(45, 74, 74, 0.9);
     --ts: rgba(0, 0, 0, 0.1);
     --th: rgba(0, 0, 0, 0.05);
-    --ta: rgba(0, 0, 0, 0.1);
+    --ta: rgba(139, 195, 74, 0.2);
     --ib: #1a1a1a;
     --bd: #444;
-    --lc: #ccc;
+    --lc: #1a1a1a;
+    --accent: #8bc34a;
   }
-  
+
   body.dark {
     --bg: #1a1a1a;
     --txt: #e0e0e0;
-    --sb: #2d3c2a;
+    --sb: #2d4a4a;
     --nf: rgba(255, 255, 255, 0.1);
     --nb: rgba(255, 255, 255, 0.2);
-    --tb: rgba(45, 60, 42, 0.9);
+    --tb: rgba(45, 74, 74, 0.9);
     --ts: rgba(0, 0, 0, 0.3);
     --th: rgba(255, 255, 255, 0.1);
-    --ta: rgba(255, 255, 255, 0.2);
+    --ta: rgba(139, 195, 74, 0.2);
     --ib: #000;
     --bd: #555;
     --lc: #666;
+    --accent: #8bc34a;
   }
   
   body {
     width: 100vw;
     height: 100vh;
     overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--bg);
     color: var(--txt);
     transition: background 0.3s, color 0.3s;
@@ -52,24 +55,27 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 60px;
-    font-weight: 300;
+    font-size: clamp(50px, 8vw, 90px);
+    font-weight: 900;
     color: var(--lc);
     pointer-events: none;
-    font-family: Georgia, serif;
-    letter-spacing: 0.05em;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+    line-height: 0.95;
     transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
     text-align: center;
   }
 
   #logo-subtext {
-    font-size: 20px;
-    font-weight: 300;
+    font-size: clamp(18px, 2vw, 22px);
+    font-weight: 400;
     color: var(--lc);
-    font-family: Georgia, serif;
-    letter-spacing: 0.05em;
-    margin-top: 12px;
-    opacity: 0.8;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    letter-spacing: -0.02em;
+    margin-top: 20px;
+    opacity: 0.7;
+    line-height: 1.6;
     transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
   }
   
@@ -93,10 +99,11 @@
   .sidebar-logo {
     padding: 14px;
     font-size: 18px;
-    font-weight: 300;
+    font-weight: 900;
     color: #fff;
-    font-family: Georgia, serif;
-    letter-spacing: 0.05em;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
     text-align: center;
     height: 48px;
     display: flex;
@@ -135,13 +142,10 @@
     word-wrap: break-word;
     color: var(--txt);
   }
-  
-  .note:focus {
-  }
-  
+
   .note.selected {
-    background: rgba(52, 69, 50, 0.1);
-    box-shadow: 0 0 0 2px rgba(52, 69, 50, 0.5);
+    background: rgba(139, 195, 74, 0.1);
+    box-shadow: 0 0 0 2px var(--accent);
   }
 
   /* List styling */
@@ -212,14 +216,15 @@
   }
   
   #toolbar button.active {
-    background: var(--ta);
+    background: var(--accent);
+    color: var(--ib);
   }
   
   #toolbar select {
     padding: 4px 8px;
     border: 1px solid var(--bd);
     border-radius: 4px;
-    background: rgba(52, 69, 50, 0.95);
+    background: rgba(45, 74, 74, 0.95);
     color: #ffffff;
     cursor: pointer;
     font-size: 14px;
@@ -249,12 +254,13 @@
     padding: 4px 6px;
     border: 1px solid var(--bd);
     border-radius: 4px;
-    background: rgba(52, 69, 50, 0.95);
+    background: rgba(45, 74, 74, 0.95);
     color: #ffffff;
     font-size: 14px;
     text-align: center;
     outline: none;
     -moz-appearance: textfield;
+    appearance: textfield;
   }
   
   .font-size-controls input::-webkit-outer-spin-button,
@@ -382,8 +388,8 @@
   }
   
   .note-item.active {
-    background: rgba(255, 255, 255, 0.2);
-    color: #fff;
+    background: var(--accent);
+    color: var(--ib);
   }
   
   .note-text {
@@ -512,16 +518,16 @@
   /* Selection */
   .select-box {
     position: absolute;
-    border: 1px dashed rgba(52, 69, 50, 0.7);
-    background: rgba(52, 69, 50, 0.1);
+    border: 1px dashed var(--accent);
+    background: rgba(139, 195, 74, 0.1);
     pointer-events: none;
   }
-  
+
   .selection-handle {
     position: absolute;
     width: 12px;
     height: 12px;
-    background: #344532;
+    background: var(--accent);
     border: 2px solid #fff;
     border-radius: 2px;
     cursor: move;
@@ -532,7 +538,7 @@
     position: absolute;
     width: 8px;
     height: 8px;
-    background: #344532;
+    background: var(--accent);
     border: 1px solid #fff;
     border-radius: 1px;
     z-index: 101;
@@ -588,27 +594,36 @@
   }
   
   .modal-buttons button {
-    padding: 8px 20px;
-    border: none;
-    border-radius: 6px;
+    padding: 12px 28px;
+    border: 2px solid transparent;
+    border-radius: 50px;
     cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s;
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    transition: all 0.3s ease;
   }
-  
+
   .modal-buttons .cancel {
-    background: #ffffff;
-    border: 1px solid #cccccc;
-    color: #333333;
-  }
-  
-  .modal-buttons .confirm {
-    background: #2a3628;
+    background: transparent;
+    border-color: rgba(255, 255, 255, 0.3);
     color: #fff;
   }
-  
+
+  .modal-buttons .confirm {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--ib);
+  }
+
   .modal-buttons button:hover {
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+  }
+
+  .modal-buttons .confirm:hover {
+    box-shadow: 0 4px 12px rgba(139, 195, 74, 0.3);
   }
 
   /* Settings Modal */
@@ -620,10 +635,12 @@
     min-height: 600px;
     max-height: 600px;
     padding: 0;
-    background: #344532;
+    background: var(--sb);
     position: relative;
     overflow: hidden;
     box-sizing: border-box;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
   
   .tabbed-modal {
@@ -645,8 +662,10 @@
   .settings-modal .settings-header h3 {
     margin: 0 0 8px 0;
     color: #fff;
-    font-size: 18px;
-    font-weight: 500;
+    font-size: 24px;
+    font-weight: 700;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    letter-spacing: -0.02em;
     text-align: left !important;
     display: block;
     width: 100%;
@@ -654,11 +673,13 @@
   
   .settings-modal .settings-header .tab-description {
     margin: 0 0 24px 0;
-    color: var(--st);
-    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 16px;
     font-weight: 400;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.6;
     padding-bottom: 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     text-align: left !important;
     display: block;
     width: 100%;
@@ -735,8 +756,8 @@
   }
   
   .settings-tab.active {
-    background: #344532;
-    color: #fff;
+    background: rgba(139, 195, 74, 0.2);
+    color: var(--accent);
   }
   
   .settings-tab svg {
@@ -790,47 +811,51 @@
   
   .toggle-label {
     color: #fff;
-    font-weight: 500;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     margin-bottom: 12px;
     display: block;
   }
-  
+
   .toggle-switch {
     display: flex;
-    gap: 8px;
+    gap: 12px;
     align-items: center;
   }
-  
+
   .toggle-switch input[type="radio"] {
     display: none;
   }
-  
+
   .toggle-switch label {
-    padding: 8px 16px;
-    background: var(--bd);
-    color: var(--st);
-    border-radius: 6px;
+    padding: 10px 24px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.7);
+    border-radius: 50px;
     cursor: pointer;
     font-size: 14px;
-    transition: all 0.2s;
-    border: 1px solid var(--bd);
+    font-weight: 500;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
   }
-  
+
   .toggle-switch label:hover {
-    background: var(--sh);
-  }
-  
-  .toggle-switch input[type="radio"]:checked + label {
-    background: #344532;
+    background: rgba(255, 255, 255, 0.1);
     color: #fff;
-    border-color: #344532;
+    transform: translateY(-2px);
+  }
+
+  .toggle-switch input[type="radio"]:checked + label {
+    background: var(--accent);
+    color: var(--ib);
+    border-color: var(--accent);
   }
   
   /* Shortcuts Layout */
-  .shortcuts-content {
-    /* No custom height or overflow - let parent handle scrolling */
-  }
-  
   .shortcuts-section {
     margin-bottom: 32px;
   }
@@ -841,40 +866,43 @@
   
   .shortcuts-section h4 {
     color: #fff;
-    font-size: 16px;
-    font-weight: 600;
-    margin: 0 0 16px 0;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    font-size: 18px;
+    font-weight: 700;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    letter-spacing: -0.02em;
+    margin: 0 0 20px 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
-  
+
   .shortcuts-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
   }
-  
+
   .shortcut-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 0;
+    padding: 12px 0;
   }
-  
+
   .shortcut-action {
-    color: var(--st);
+    color: rgba(255, 255, 255, 0.8);
     font-size: 14px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
-  
+
   .shortcut-key {
     color: #fff;
     font-size: 12px;
-    font-family: 'Courier New', monospace;
-    background: var(--sh);
-    padding: 4px 8px;
-    border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    font-weight: 500;
+    font-family: 'Inter', monospace;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-weight: 600;
   }
   
 
@@ -938,6 +966,7 @@
     font-size: 14px;
     outline: none;
     -moz-appearance: textfield;
+    appearance: textfield;
     transition: border-color 0.2s, background-color 0.2s;
   }
   
@@ -954,19 +983,25 @@
 
   .delete-all-btn {
     width: 100%;
-    padding: 12px;
-    background: #2a3628;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 500;
+    padding: 14px 32px;
+    background: transparent;
+    color: #dc2626;
+    border: 2px solid #dc2626;
+    border-radius: 50px;
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.3s ease;
   }
 
   .delete-all-btn:hover {
-    background: #1f2a1d;
+    background: #dc2626;
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
   }
 
   .modal-buttons .delete-confirm {
@@ -1044,8 +1079,8 @@
   }
 
   .layer-item.active {
-    background: rgba(255, 255, 255, 0.2);
-    color: #fff;
+    background: var(--accent);
+    color: var(--ib);
   }
 
   .layer-item.dragging {
