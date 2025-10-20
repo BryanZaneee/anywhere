@@ -10,14 +10,13 @@ A minimalist freeform note-taking application with an infinite canvas. Click any
 - **Smart Alignment** - Photoshop-style alignment guides with 4px snap threshold (hold Alt to disable)
 - **Move & Resize Tool** - Drag notes and resize with precision handles
 - **Layers Panel** - Visual layer management with drag-to-reorder and show/hide
-- **Rich Text Formatting** - Bold, italic, underline, strikethrough, lists, font control
+- **Rich Text Formatting** - Bold, italic, underline, strikethrough, lists, font control, extensive keyboard shortcuts
 - **Multi-Selection** - Select and edit multiple notes simultaneously
 - **Document Management** - Multiple documents with search, pinning, and organization
-- **Undo/Redo** - Full history for all operations (Cmd/Ctrl+Z)
+- **Undo/Redo** - Full history for all operations
 - **Copy/Paste/Duplicate** - Duplicate notes or move between documents
 - **Light/Dark Theme** - Toggle between themes with persistent preference
 - **Auto-Save** - Changes saved automatically to localStorage (debounced for performance)
-- **Keyboard Shortcuts** - Extensive keyboard support for power users
 
 ## Quick Start
 
@@ -50,37 +49,6 @@ npm run watch  # Auto-recompile TypeScript on changes
 npm start      # Start server (separate terminal)
 ```
 
-## Keyboard Shortcuts
-
-### Navigation & Selection
-- `Escape` - Clear selection
-- `⌘/Ctrl + A` - Select all notes
-- `Delete/Backspace` - Delete selected notes
-- `Arrow Keys` - Move notes (1px)
-- `Shift + Arrows` - Move notes (10px)
-
-### Document Management
-- `⌘/Ctrl + N` - New document
-- `⌘/Ctrl + S` - Save document
-
-### Edit Operations
-- `⌘/Ctrl + Z` - Undo
-- `⌘/Ctrl + Shift + Z` - Redo
-- `⌘/Ctrl + C` - Copy notes
-- `⌘/Ctrl + V` - Paste notes
-- `⌘/Ctrl + D` - Duplicate notes
-
-### Text Formatting
-- `⌘/Ctrl + B` - Bold
-- `⌘/Ctrl + I` - Italic
-- `⌘/Ctrl + U` - Underline
-- `⌘/Ctrl + E` - Center align
-- `⌘/Ctrl + L` - Left align
-- `⌘/Ctrl + R` - Right align
-- `⌘/Ctrl + Shift + 8` - Bullet list
-- `⌘/Ctrl + Shift + 7` - Numbered list
-- `⌘/Ctrl + +/-` - Font size
-
 ## Usage
 
 ### Creating Notes
@@ -104,24 +72,6 @@ Use the sidebar to create, search, pin, and organize multiple documents. Changes
 
 Anyplace is built with vanilla TypeScript, HTML, and CSS - **no frameworks or dependencies** (except dev tools). This keeps the bundle small and the codebase accessible.
 
-### Tech Stack
-
-- **TypeScript** - Type safety and better developer experience
-- **Vanilla DOM** - Direct DOM manipulation, no virtual DOM
-- **localStorage** - Client-side persistence (auto-saves with debouncing)
-- **Canvas API** - Smart alignment guides rendering
-- **CSS Variables** - Dynamic theming support
-
-### Project Structure
-
-```
-src/
-├── index.html      # Main HTML structure and UI
-├── app.ts          # Core application logic (~2400 lines)
-├── alignment.ts    # Smart alignment system (~280 lines)
-└── styles.css      # Complete styling including themes
-```
-
 ### Key Systems
 
 - **Document Management**: Multi-document support with localStorage persistence
@@ -129,25 +79,6 @@ src/
 - **Layers System**: Z-index management with drag-to-reorder
 - **History System**: Undo/redo with 50-state limit
 - **Auto-Save**: Debounced saves (300ms) for frequent operations, immediate saves for critical actions
-
-## Development
-
-### Available Scripts
-
-- `npm run build` - Compile TypeScript to `/dist`
-- `npm run watch` - Auto-recompile on file changes
-- `npm run typecheck` - Type check without emitting files
-- `npm start` - Start development server on port 8080
-- `npm run dev` - Run watch + server concurrently
-
-### Type Checking
-
-The project uses strict TypeScript settings including:
-- `noUnusedLocals` and `noUnusedParameters` enabled
-- `noEmitOnError` - Build fails on type errors
-- `strict` mode enabled
-
-Run type checking: `npm run typecheck`
 
 ## Roadmap & Open Issues
 
