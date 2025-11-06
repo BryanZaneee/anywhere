@@ -1,4 +1,4 @@
-# Anyplace
+# Anywhere
 
 A minimalist freeform note-taking application with an infinite canvas. Click anywhere to create notes with rich formatting, smart alignment guides, and multi-document management.
 
