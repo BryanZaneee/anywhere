@@ -93,7 +93,7 @@ const noteAbortMap = new WeakMap<HTMLDivElement, AbortController>();
 
 // Constants
 const SNAP_THRESHOLD = 4; // pixels
-const HEADER_IDLE_TIMEOUT = 10000; // milliseconds
+const HEADER_IDLE_TIMEOUT = 3000; // milliseconds
 const SAVE_DEBOUNCE_DELAY = 300; // milliseconds
 const MAX_HISTORY = 50;
 const DEFAULT_FONT_SIZE = '16px';
