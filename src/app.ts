@@ -86,7 +86,10 @@ interface DocumentsStorage {
   [id: string]: AppDocument;
 }
 
-// Note: We'll use type assertions (note as any).__noteData for the custom property
+// WeakMap for type-safe note data storage (avoids `as any` casts on DOM elements)
+const noteDataMap = new WeakMap<HTMLDivElement, NoteObject>();
+// AbortControllers for cleaning up note event listeners on removal
+const noteAbortMap = new WeakMap<HTMLDivElement, AbortController>();
 
 // Constants
 const SNAP_THRESHOLD = 4; // pixels
@@ -160,12 +163,12 @@ function debounce<T extends (...args: any[]) => void>(
 
 // Type-safe helper to get note data
 function getNoteData(note: HTMLDivElement): NoteObject | null {
-  return (note as any).__noteData || null;
+  return noteDataMap.get(note) || null;
 }
 
 // Type-safe helper to set note data
 function setNoteData(note: HTMLDivElement, data: NoteObject): void {
-  (note as any).__noteData = data;
+  noteDataMap.set(note, data);
 }
 
 function generateTitleFromText(text: string): string {
@@ -291,8 +294,9 @@ function createResizeHandles(notes: Set<HTMLDivElement>): void {
       
       // Get initial font size from first selected note
       const firstNote = Array.from(selectedNotes)[0];
-      if (firstNote && (firstNote as any).__noteData) {
-        resizeStartSize = parseInt((firstNote as any).__noteData.styles.fontSize) || 16;
+      const firstNoteData = firstNote ? getNoteData(firstNote) : null;
+      if (firstNoteData) {
+        resizeStartSize = parseInt(firstNoteData.styles.fontSize) || 16;
       }
     };
     
@@ -666,12 +670,44 @@ function loadDocuments(): void {
   updateNotesList();
 }
 
+function showSaveError(message: string): void {
+  // Show a brief toast-style warning
+  let toast = document.getElementById('save-error-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'save-error-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => toast!.classList.remove('show'), 5000);
+}
+
+let _saveIndicatorTimer: number | null = null;
+function showSaveIndicator(): void {
+  let el = document.getElementById('save-indicator');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'save-indicator';
+    el.textContent = 'Saved';
+    document.body.appendChild(el);
+  }
+  el.classList.add('show');
+  if (_saveIndicatorTimer) clearTimeout(_saveIndicatorTimer);
+  _saveIndicatorTimer = window.setTimeout(() => el!.classList.remove('show'), 1500);
+}
+
 function saveDocuments(): void {
   try {
     localStorage.setItem('anywhereDocuments', JSON.stringify(documents));
+    showSaveIndicator();
   } catch (e) {
     console.error('Failed to save documents to localStorage:', e);
-    // Could show user notification here if needed
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+      showSaveError('Storage full — some changes may not be saved. Try deleting unused documents.');
+    } else {
+      showSaveError('Failed to save — changes may be lost.');
+    }
   }
 }
 
@@ -685,7 +721,7 @@ function createNewDocument(): void {
 }
 
 function clearCanvas(): void {
-  canvas.querySelectorAll('.note').forEach(n => n.remove());
+  canvas.querySelectorAll<HTMLDivElement>('.note').forEach(n => { cleanupNote(n); n.remove(); });
   logo.classList.remove('slide-away', 'hidden');
   hasTyped = false;
   selectedNotes.clear();
@@ -733,7 +769,7 @@ function saveCurrentDocumentImmediate(): void {
   if (!currentDocId) return;
 
   const notes: NoteData[] = Array.from(canvas.querySelectorAll<HTMLDivElement>('.note')).map(note => {
-    const noteData = (note as any).__noteData;
+    const noteData = getNoteData(note);
     return {
       x: parseInt(note.style.left),
       y: parseInt(note.style.top),
@@ -772,6 +808,11 @@ function saveCurrentDocumentImmediate(): void {
 
 // Debounced save for frequent operations
 const saveCurrentDocument = debounce(saveCurrentDocumentImmediate, SAVE_DEBOUNCE_DELAY);
+
+// Flush any pending debounced save before the tab closes
+window.addEventListener('beforeunload', () => {
+  saveCurrentDocumentImmediate();
+});
 
 // Undo/Redo system functions
 function saveToHistory(): void {
@@ -1180,7 +1221,18 @@ function initializeLayersPanel(): void {
   updateLayersPanel();
 }
 
+let _layersPanelUpdatePending = false;
 function updateLayersPanel(): void {
+  // Coalesce rapid calls into a single render per animation frame
+  if (_layersPanelUpdatePending) return;
+  _layersPanelUpdatePending = true;
+  requestAnimationFrame(() => {
+    _layersPanelUpdatePending = false;
+    _updateLayersPanelImmediate();
+  });
+}
+
+function _updateLayersPanelImmediate(): void {
   if (!layersListElement) return;
   
   const allNotes = Array.from(canvas.querySelectorAll<HTMLDivElement>('.note'));
@@ -1195,7 +1247,7 @@ function updateLayersPanel(): void {
   layersListElement!.innerHTML = '';
 
   allNotes.forEach((note) => {
-    const noteData = (note as any).__noteData as NoteObject;
+    const noteData = getNoteData(note) as NoteObject;
     const layerItem = document.createElement('div');
     layerItem.className = 'layer-item';
     layerItem.draggable = true;
@@ -1336,15 +1388,29 @@ function reorderNotesZIndex(draggedNote: HTMLDivElement, targetNote: HTMLDivElem
   saveCurrentDocument();
 }
 
+// Clean up event listeners when a note is removed
+function cleanupNote(note: HTMLDivElement): void {
+  const controller = noteAbortMap.get(note);
+  if (controller) {
+    controller.abort();
+    noteAbortMap.delete(note);
+  }
+}
+
 // Note setup and interactions
 function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
-  (note as any).__noteData = noteObj;
-  
+  setNoteData(note, noteObj);
+
+  // Create AbortController for this note's event listeners
+  const ac = new AbortController();
+  const signal = ac.signal;
+  noteAbortMap.set(note, ac);
+
   // Initialize z-index for layer management
   if (!note.style.zIndex) {
     note.style.zIndex = (++noteZIndexCounter).toString();
   }
-  
+
   note.addEventListener('mousedown', e => {
     // Use position-based detection to determine if click is over actual text content
     const hasExistingSelection = window.getSelection()?.toString();
@@ -1366,7 +1432,10 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
     
     // In move mode, always select the note for moving and enable dragging
     if (currentTool === 'move') {
-      if (!e.shiftKey) selectedNotes.clear();
+      // Only clear selection if clicking a note NOT already selected (and not shift-clicking)
+      if (!e.shiftKey && !selectedNotes.has(note)) {
+        selectedNotes.clear();
+      }
       selectedNotes.add(note);
       updateSelection();
       
@@ -1401,23 +1470,31 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
       updateSelection();
       e.preventDefault();
     }
-  });
-  
+  }, { signal });
+
   note.addEventListener('focus', () => {
     if (currentTool === 'default') {
       currentNote = noteObj;
       showToolbar();
       updateToolbar();
     }
-  });
-  
+  }, { signal });
+
+  // Sanitize pasted content from external sources
+  note.addEventListener('paste', (e: ClipboardEvent) => {
+    e.preventDefault();
+    const text = e.clipboardData?.getData('text/plain') || '';
+    document.execCommand('insertText', false, text);
+  }, { signal });
+
   note.addEventListener('blur', () => {
     if (!note.innerHTML.trim()) {
+      cleanupNote(note);
       note.remove();
       updateLayersPanel(); // Update layers panel when note is removed
     }
     saveCurrentDocument();
-  });
+  }, { signal });
   
   note.addEventListener('input', () => {
     if (!hasTyped && note.textContent?.length) {
@@ -1428,8 +1505,8 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
     // Update layers panel to reflect content changes
     updateLayersPanel();
     saveCurrentDocument();
-  });
-  
+  }, { signal });
+
   note.addEventListener('mouseup', () => {
     // Show toolbar when text is selected
     if (window.getSelection()?.toString()) {
@@ -1437,14 +1514,14 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
       showToolbar();
       updateToolbar();
     }
-  });
-  
+  }, { signal });
+
   // Handle text selection changes
   note.addEventListener('selectstart', () => {
     // Allow text selection to start naturally
     currentNote = noteObj;
-  });
-  
+  }, { signal });
+
   // Note keyboard shortcuts
   note.addEventListener('keydown', e => {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -1482,7 +1559,7 @@ function setupNote(note: HTMLDivElement, noteObj: NoteObject): void {
           break;
       }
     }
-  });
+  }, { signal });
 }
 
 // Selection management
@@ -1535,7 +1612,7 @@ function updateSelection(): void {
     updateToolbar();
   } else if (selectedNotes.size === 1) {
     const note = Array.from(selectedNotes)[0];
-    currentNote = (note as any).__noteData!;
+    currentNote = getNoteData(note)!;
     showToolbar();
     updateToolbar();
   } else {
@@ -1586,8 +1663,9 @@ function applyStyles(el: HTMLDivElement, styles: NoteStyles): void {
 function updateStyles(): void {
   if (selectedNotes.size > 1) {
     selectedNotes.forEach(note => {
-      if ((note as any).__noteData) {
-        applyStyles(note, (note as any).__noteData.styles);
+      const nd = getNoteData(note);
+      if (nd) {
+        applyStyles(note, nd.styles);
       }
     });
   } else if (currentNote) {
@@ -1605,11 +1683,12 @@ function toggleBulletList(): void {
   } else if (selectedNotes.size > 1) {
     // Multiple notes selected
     selectedNotes.forEach(note => {
-      if ((note as any).__noteData) {
-        const currentListType = (note as any).__noteData.styles.listType;
+      const nd = getNoteData(note);
+      if (nd) {
+        const currentListType = nd.styles.listType;
         const isTogglingOn = currentListType !== 'bullet';
-        (note as any).__noteData.styles.listType = isTogglingOn ? 'bullet' : 'none';
-        
+        nd.styles.listType = isTogglingOn ? 'bullet' : 'none';
+
         // If note is empty and we're turning on list, insert empty list item
         if (isTogglingOn && !note.textContent?.trim()) {
           note.innerHTML = '<ul><li></li></ul>';
@@ -1620,7 +1699,7 @@ function toggleBulletList(): void {
             positionCursorInElement(li);
           }
         } else {
-          applyStyles(note, (note as any).__noteData.styles);
+          applyStyles(note, nd.styles);
         }
       }
     });
@@ -1658,11 +1737,12 @@ function toggleNumberedList(): void {
   } else if (selectedNotes.size > 1) {
     // Multiple notes selected
     selectedNotes.forEach(note => {
-      if ((note as any).__noteData) {
-        const currentListType = (note as any).__noteData.styles.listType;
+      const nd = getNoteData(note);
+      if (nd) {
+        const currentListType = nd.styles.listType;
         const isTogglingOn = currentListType !== 'numbered';
-        (note as any).__noteData.styles.listType = isTogglingOn ? 'numbered' : 'none';
-        
+        nd.styles.listType = isTogglingOn ? 'numbered' : 'none';
+
         // If note is empty and we're turning on list, insert empty list item
         if (isTogglingOn && !note.textContent?.trim()) {
           note.innerHTML = '<ol><li></li></ol>';
@@ -1673,7 +1753,7 @@ function toggleNumberedList(): void {
             positionCursorInElement(li);
           }
         } else {
-          applyStyles(note, (note as any).__noteData.styles);
+          applyStyles(note, nd.styles);
         }
       }
     });
@@ -1704,7 +1784,7 @@ function toggleNumberedList(): void {
 
 function updateToolbar(): void {
   if (selectedNotes.size > 1) {
-    const firstNote = (Array.from(selectedNotes)[0] as any).__noteData;
+    const firstNote = getNoteData(Array.from(selectedNotes)[0]);
     if (firstNote) {
       const s = firstNote.styles;
       // Show formatting buttons for multi-selection too
@@ -1870,34 +1950,38 @@ document.addEventListener('click', e => {
   }
 });
 
-document.addEventListener('mousemove', e => {
+// Throttle drag/resize updates to one per animation frame
+let _pendingMoveEvent: MouseEvent | null = null;
+let _moveRafId: number | null = null;
+
+function processDragMove(e: MouseEvent): void {
   if (isDraggingGroup || isDraggingNote) {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
-    
+
     // Check if Alt key is held to temporarily disable snapping
     const tempDisableSnap = e.altKey;
-    
+
     // Visual feedback for Alt key
     if (guidesCanvas) {
       guidesCanvas.classList.toggle('snap-disabled', tempDisableSnap);
     }
     canvas.classList.toggle('snap-disabled', tempDisableSnap);
-    
+
     // Handle both group and individual note dragging
     const currentDraggedNote = isDraggingNote ? draggedNote : Array.from(selectedNotes)[0];
-    
+
     if (alignmentSystem && snapEnabled && !tempDisableSnap && currentDraggedNote) {
       // Calculate new position
       const currentX = parseInt(currentDraggedNote.style.left) + dx;
       const currentY = parseInt(currentDraggedNote.style.top) + dy;
-      
+
       // Get all notes for alignment calculation
       const allNotes = Array.from(canvas.querySelectorAll<HTMLDivElement>('.note'));
-      
+
       // Calculate snap with new system
       const snapResult = alignmentSystem.calculateSnap(currentDraggedNote, allNotes, currentX, currentY);
-      
+
       // Apply positions with snap correction to all selected notes
       selectedNotes.forEach(note => {
         const x = parseInt(note.style.left);
@@ -1905,7 +1989,7 @@ document.addEventListener('mousemove', e => {
         note.style.left = (x + dx + snapResult.deltaX) + 'px';
         note.style.top = (y + dy + snapResult.deltaY) + 'px';
       });
-      
+
       // Update layer z-index when notes are moved
       selectedNotes.forEach(note => {
         if (!note.style.zIndex) {
@@ -1920,20 +2004,20 @@ document.addEventListener('mousemove', e => {
         note.style.left = (x + dx) + 'px';
         note.style.top = (y + dy) + 'px';
       });
-      
+
       // Clear guides if Alt is pressed or snap is disabled
       if (alignmentSystem && (tempDisableSnap || !snapEnabled)) {
         alignmentSystem.clearGuides();
       }
     }
-    
+
     if (dragHandle) {
       const hx = parseInt(dragHandle.style.left);
       const hy = parseInt(dragHandle.style.top);
       dragHandle.style.left = (hx + dx) + 'px';
       dragHandle.style.top = (hy + dy) + 'px';
     }
-    
+
     // Update resize handles to follow the notes
     if (currentTool === 'move' && selectedNotes.size > 0) {
       createResizeHandles(selectedNotes);
@@ -1942,20 +2026,20 @@ document.addEventListener('mousemove', e => {
     startX = e.clientX;
     startY = e.clientY;
   }
-  
+
   // Handle resize
   if (isResizing && resizeHandle && selectedNotes.size > 0) {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
-    
+
     // Calculate size change based on diagonal movement
     const distance = Math.sqrt(dx * dx + dy * dy);
     const sizeChange = Math.round(distance * 0.2); // Scale factor for font size change
-    
+
     // Determine direction (increase or decrease size)
     const handleClass = resizeHandle.className;
     let newSize = resizeStartSize;
-    
+
     if (handleClass.includes('corner-se') || handleClass.includes('corner-ne')) {
       // Bottom-right or top-right corners: drag right/down to increase
       newSize = resizeStartSize + (dx > 0 ? sizeChange : -sizeChange);
@@ -1966,20 +2050,36 @@ document.addEventListener('mousemove', e => {
       // Edge handles: use combined movement
       newSize = resizeStartSize + ((dx + dy) > 0 ? sizeChange : -sizeChange);
     }
-    
+
     // Clamp font size between 8px and 72px
     newSize = Math.max(8, Math.min(72, newSize));
-    
+
     // Apply new font size to all selected notes
     selectedNotes.forEach(note => {
-      if ((note as any).__noteData) {
-        (note as any).__noteData.styles.fontSize = newSize + 'px';
-        applyStyles(note, (note as any).__noteData.styles);
+      const nd = getNoteData(note);
+      if (nd) {
+        nd.styles.fontSize = newSize + 'px';
+        applyStyles(note, nd.styles);
       }
     });
-    
+
     // Update resize handles position after size change
     createResizeHandles(selectedNotes);
+  }
+}
+
+document.addEventListener('mousemove', e => {
+  if (isDraggingGroup || isDraggingNote || (isResizing && resizeHandle)) {
+    _pendingMoveEvent = e;
+    if (_moveRafId === null) {
+      _moveRafId = requestAnimationFrame(() => {
+        _moveRafId = null;
+        if (_pendingMoveEvent) {
+          processDragMove(_pendingMoveEvent);
+          _pendingMoveEvent = null;
+        }
+      });
+    }
   }
 });
 
@@ -2058,9 +2158,10 @@ $('snapToggle').onclick = () => {
     } else if (selectedNotes.size > 1) {
       // Multiple notes selected
       selectedNotes.forEach(note => {
-        if ((note as any).__noteData) {
-          ((note as any).__noteData.styles as any)[id] = !((note as any).__noteData.styles as any)[id];
-          applyStyles(note, (note as any).__noteData.styles);
+        const nd = getNoteData(note);
+        if (nd) {
+          (nd.styles as any)[id] = !(nd.styles as any)[id];
+          applyStyles(note, nd.styles);
         }
       });
       updateStyles();
@@ -2079,9 +2180,10 @@ $('snapToggle').onclick = () => {
     const alignValue = align.replace('align', '').toLowerCase() as 'left' | 'center' | 'right';
     if (selectedNotes.size > 1) {
       selectedNotes.forEach(note => {
-        if ((note as any).__noteData) {
-          (note as any).__noteData.styles.align = alignValue;
-          applyStyles(note, (note as any).__noteData.styles);
+        const nd = getNoteData(note);
+        if (nd) {
+          nd.styles.align = alignValue;
+          applyStyles(note, nd.styles);
         }
       });
     } else if (currentNote) {
@@ -2124,9 +2226,10 @@ function applyFontSize(size: string): void {
     saveCurrentDocument();
   } else if (selectedNotes.size > 1) {
     selectedNotes.forEach(note => {
-      if ((note as any).__noteData) {
-        (note as any).__noteData.styles.fontSize = size;
-        applyStyles(note, (note as any).__noteData.styles);
+      const nd = getNoteData(note);
+      if (nd) {
+        nd.styles.fontSize = size;
+        applyStyles(note, nd.styles);
       }
     });
     updateStyles();
@@ -2140,7 +2243,7 @@ function applyFontSize(size: string): void {
 function updateFontSizeInput(): void {
   const input = $('fontSizeInput') as HTMLInputElement;
   if (selectedNotes.size > 1) {
-    const firstNote = (Array.from(selectedNotes)[0] as any).__noteData;
+    const firstNote = getNoteData(Array.from(selectedNotes)[0]);
     if (firstNote) {
       input.value = parseInt(firstNote.styles.fontSize).toString();
     }
@@ -2198,9 +2301,10 @@ function updateFontSizeInput(): void {
     saveCurrentDocument();
   } else if (selectedNotes.size > 1) {
     selectedNotes.forEach(note => {
-      if ((note as any).__noteData) {
-        (note as any).__noteData.styles.fontFamily = font;
-        applyStyles(note, (note as any).__noteData.styles);
+      const nd = getNoteData(note);
+      if (nd) {
+        nd.styles.fontFamily = font;
+        applyStyles(note, nd.styles);
       }
     });
     updateStyles();
@@ -2292,7 +2396,7 @@ document.addEventListener('keydown', e => {
       
       const noteObj: NoteObject = {
         el: newNote,
-        styles: { ...(note as any).__noteData!.styles }
+        styles: { ...getNoteData(note)!.styles }
       };
       
       canvas.appendChild(newNote);
@@ -2306,11 +2410,12 @@ document.addEventListener('keydown', e => {
   if (ctrlKey && (e.key === '=' || e.key === '+') && selectedNotes.size > 0 && !(document.activeElement as HTMLElement).classList.contains('note')) {
     e.preventDefault();
     selectedNotes.forEach(note => {
-      if ((note as any).__noteData) {
-        const currentSize = parseInt((note as any).__noteData.styles.fontSize);
+      const nd = getNoteData(note);
+      if (nd) {
+        const currentSize = parseInt(nd.styles.fontSize);
         const newSize = Math.min(currentSize + 2, 72);
-        (note as any).__noteData.styles.fontSize = newSize + 'px';
-        applyStyles(note, (note as any).__noteData.styles);
+        nd.styles.fontSize = newSize + 'px';
+        applyStyles(note, nd.styles);
       }
     });
     updateStyles();
@@ -2320,11 +2425,12 @@ document.addEventListener('keydown', e => {
   if (ctrlKey && e.key === '-' && selectedNotes.size > 0 && !(document.activeElement as HTMLElement).classList.contains('note')) {
     e.preventDefault();
     selectedNotes.forEach(note => {
-      if ((note as any).__noteData) {
-        const currentSize = parseInt((note as any).__noteData.styles.fontSize);
+      const nd = getNoteData(note);
+      if (nd) {
+        const currentSize = parseInt(nd.styles.fontSize);
         const newSize = Math.max(currentSize - 2, 8);
-        (note as any).__noteData.styles.fontSize = newSize + 'px';
-        applyStyles(note, (note as any).__noteData.styles);
+        nd.styles.fontSize = newSize + 'px';
+        applyStyles(note, nd.styles);
       }
     });
     updateStyles();
@@ -2363,7 +2469,7 @@ document.addEventListener('keydown', e => {
       x: parseInt(note.style.left),
       y: parseInt(note.style.top),
       html: note.innerHTML,
-      styles: (note as any).__noteData ? (note as any).__noteData.styles : {} as NoteStyles
+      styles: getNoteData(note)?.styles ?? {} as NoteStyles
     }));
     
     // Store in localStorage since clipboard API requires HTTPS
@@ -2417,7 +2523,7 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     // Save state before deletion
     saveToHistory();
-    selectedNotes.forEach(note => note.remove());
+    selectedNotes.forEach(note => { cleanupNote(note); note.remove(); });
     selectedNotes.clear();
     updateSelection();
     updateLayersPanel(); // Update layers panel when notes are deleted
@@ -2501,6 +2607,53 @@ document.addEventListener('keydown', e => {
 
 
 
+// Touch event support — convert single-touch events to mouse events
+function addTouchSupport(): void {
+  function touchToMouse(type: string, touch: Touch, original: TouchEvent): MouseEvent {
+    return new MouseEvent(type, {
+      bubbles: true,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      screenX: touch.screenX,
+      screenY: touch.screenY,
+      shiftKey: original.shiftKey,
+      ctrlKey: original.ctrlKey,
+      metaKey: original.metaKey,
+      altKey: original.altKey,
+    });
+  }
+
+  let touchActive = false;
+
+  document.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      touchActive = true;
+      const touch = e.touches[0];
+      (touch.target as HTMLElement).dispatchEvent(touchToMouse('mousedown', touch, e));
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchmove', e => {
+    if (touchActive && e.touches.length === 1) {
+      e.preventDefault(); // Prevent scroll while dragging
+      const touch = e.touches[0];
+      document.dispatchEvent(touchToMouse('mousemove', touch, e));
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchend', e => {
+    if (touchActive) {
+      touchActive = false;
+      const touch = e.changedTouches[0];
+      document.dispatchEvent(touchToMouse('mouseup', touch, e));
+      // Fire click for tap-to-create-note
+      if (e.changedTouches.length === 1) {
+        (touch.target as HTMLElement).dispatchEvent(touchToMouse('click', touch, e));
+      }
+    }
+  }, { passive: false });
+}
+
 // Initialize
 loadTheme();
 loadSettings();
@@ -2508,3 +2661,4 @@ loadDocuments();
 initHeaderAutoHide();
 updateCanvasClasses(); // Initialize tool state
 initializeLayersPanel(); // Initialize layers panel
+addTouchSupport(); // Enable basic mobile/touch interactions

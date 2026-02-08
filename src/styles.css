@@ -141,6 +141,8 @@
     white-space: pre-wrap;
     word-wrap: break-word;
     color: var(--txt);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 200px;
   }
 
   .note.selected {
@@ -1147,4 +1149,43 @@
   #notesList::-webkit-scrollbar-thumb:hover,
   .layers-list::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3);
+  }
+
+  /* Save indicator */
+  #save-indicator {
+    position: fixed;
+    bottom: 12px;
+    right: 16px;
+    font-size: 11px;
+    color: var(--accent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  #save-indicator.show {
+    opacity: 1;
+  }
+
+  /* Save error toast */
+  #save-error-toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #d32f2f;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 13px;
+    z-index: 10000;
+    opacity: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    pointer-events: none;
+  }
+
+  #save-error-toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
   }

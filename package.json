@@ -7,7 +7,7 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "typecheck": "tsc --noEmit",
-    "serve": "python -m http.server 8080",
+    "serve": "python3 -m http.server 8080",
     "start": "npm run serve",
     "dev": "concurrently \"npm run watch\" \"npm run serve\""
   },
